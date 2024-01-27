@@ -3,14 +3,16 @@ import queue
 import threading
 
 import discord
+from discord.utils import get
 from dotenv import load_dotenv
 
+from src.music.ytdl_source import YTDLSource
 from src.queue.consumer import ActionConsumer
 
 load_dotenv()
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-DISCORD_CHANNEL_ID = os.environ.get("DISCORD_CHANNEL_ID")
+DISCORD_CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID"))
 
 
 class HeyBillyBot(discord.Bot):
@@ -26,19 +28,20 @@ class HeyBillyBot(discord.Bot):
         self.consumer_threads = [threading.Thread(
             target=c.consume, daemon=True) for c in self.consumers]
 
+        self.helper = BotHelper(self)
+
     async def process_actions(self):
         while True:
             action_json = await self.loop.run_in_executor(None, self.action_queue.get)
             if action_json['node_type'] == 'output.tts':
                 print(f"Received TTS output: {action_json['data']['tts_url']}")
             elif action_json['node_type'] == 'youtube.play':
-                print(
-                    f"Received YouTube play: {action_json['data']['video_id']}")
+                await self.helper.play_audio(action_json['data']['video_id'])
             elif action_json['node_type'] == 'volume.set':
                 print(f"Received volume set: {action_json['data']['value']}")
             elif action_json['node_type'] == 'discord.post':
-                print(
-                    f"Received Discord post: {action_json['data']['text']}")
+                await self.helper.send_message(
+                    DISCORD_CHANNEL_ID, action_json['data']['text'])
 
     async def on_ready(self):
         print(f"Logged in as {self.user}.")
@@ -46,6 +49,29 @@ class HeyBillyBot(discord.Bot):
             thread.start()
 
         self.loop.create_task(self.process_actions())
+
+
+class BotHelper:
+    def __init__(self, bot: HeyBillyBot):
+        self.bot = bot
+
+    async def send_message(self, channel_id, content, embed=None, tts=False):
+        channel = self.bot.get_channel(channel_id)
+        if channel:
+            await channel.send(content=content, embed=embed, tts=tts)
+        else:
+            print(f"Channel with ID {channel_id} not found.")
+
+    async def create_ytdl_source(self, video_url, add_yt_prefix=False):
+        if add_yt_prefix:
+            video_url = f"https://www.youtube.com/watch?v={video_url}"
+
+        return await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
+
+    async def play_audio(self, video_id):
+        voice_channel = self.bot.vc
+        ytdl_source = await self.create_ytdl_source(video_id, True)
+        voice_channel.play(ytdl_source)
 
 
 if __name__ == "__main__":
@@ -59,13 +85,13 @@ if __name__ == "__main__":
             return
 
         await ctx.respond("Connecting to your VC.", ephemeral=True)
-        await author_vc.channel.connect()
+        bot.vc = await author_vc.channel.connect()
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
         bot_vc = ctx.voice_client
         if not bot_vc:
-            await ctx.respond("I am not in a voice channel.", ephemeral=True)
+            await ctx.respond("I am not in your voice channel.", ephemeral=True)
             return
 
         await ctx.respond("Disconnecting from VC.", ephemeral=True)
