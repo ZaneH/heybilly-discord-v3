@@ -18,7 +18,22 @@ class BotHelper:
 
         return await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
 
-    async def play_audio(self, video_id):
+    async def play_youtube(self, video_id):
         voice_channel = self.bot.vc
         ytdl_source = await self.create_ytdl_source(video_id, True)
         voice_channel.play(ytdl_source)
+
+    async def play_url(self, url):
+        voice_channel = self.bot.vc
+        ytdl_source = await self.create_ytdl_source(url)
+        voice_channel.play(ytdl_source)
+
+    async def _handle_play_node(self, node):
+        await self.play_youtube(node["data"]["video_id"])
+
+    async def _handle_post_node(self, node, discord_channel_id):
+        await self.send_message(discord_channel_id, node["data"]["text"])
+
+    async def _handle_tts_node(self, node):
+        print(node)
+        await self.play_url(node["data"]["tts_url"])

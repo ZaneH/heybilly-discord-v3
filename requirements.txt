@@ -1,4 +1,4 @@
 py-cord[voice]
-youtube_dl
+yt-dlp
 aio-pika
 python-dotenv

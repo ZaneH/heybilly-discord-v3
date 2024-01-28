@@ -34,7 +34,13 @@ class HeyBillyBot(discord.Bot):
     async def process_actions(self):
         while True:
             action = await self.action_queue.get()
-            print("Processing:", action)
+            print(f"Processing action: {action}")
+            if action["node_type"] == "youtube.play":
+                await self.helper._handle_play_node(action)
+            elif action["node_type"] == "discord.post":
+                await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
+            elif action["node_type"] == "output.tts":
+                await self.helper._handle_tts_node(action)
 
     async def on_ready(self):
         print(f"Logged in as {self.user}.")
@@ -49,6 +55,10 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     bot = HeyBillyBot(loop)
 
+    # change this if you're not on macOS
+    if not discord.opus.is_loaded():
+        discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+
     @bot.slash_command(name="connect", description="Connect to your voice channel.")
     async def connect(ctx: discord.context.ApplicationContext):
         author_vc = ctx.author.voice
@@ -58,7 +68,6 @@ if __name__ == "__main__":
 
         await ctx.respond("Connecting to your VC.", ephemeral=True)
         bot.vc = await author_vc.channel.connect()
-        bot.vc.play(await bot.helper.create_ytdl_source("https://www.youtube.com/watch?v=wvPPDMjuh6Q"))
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
