@@ -38,17 +38,11 @@ class BotHelper:
         else:
             print(f"Channel with ID {channel_id} not found.")
 
-    async def create_ytdl_source(self, video_url, add_yt_prefix=False):
-        if add_yt_prefix:
-            video_url = f"https://www.youtube.com/watch?v={video_url}"
-
-        return await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
-
-    async def play_youtube(self, video_id):
+    async def play_youtube(self, video_url):
         if self.current_music_source:
             self.bot.vc.stop()
 
-        self.current_music_source = await self.create_ytdl_source(video_id, add_yt_prefix=True)
+        self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
         self.bot.vc.play(self.current_music_source, after=self.after_play_callback)
 
     def after_play_callback(self, error):
@@ -63,7 +57,7 @@ class BotHelper:
             await self.tts_queue.add_tts(tts_source)
 
     async def _handle_play_node(self, node):
-        await self.play_youtube(node["data"]["video_id"])
+        await self.play_youtube(node["data"]["video_url"])
 
     async def _handle_post_node(self, node, discord_channel_id):
         await self.send_message(discord_channel_id, node["data"]["text"])
