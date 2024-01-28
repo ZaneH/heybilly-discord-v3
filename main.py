@@ -41,6 +41,8 @@ class HeyBillyBot(discord.Bot):
                 await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
             elif action["node_type"] == "output.tts":
                 await self.helper._handle_tts_node(action)
+            elif action["node_type"] == "volume.set":
+                self.helper._handle_volume_node(action)
 
     async def on_ready(self):
         print(f"Logged in as {self.user}.")

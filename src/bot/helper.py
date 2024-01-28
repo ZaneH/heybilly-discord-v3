@@ -18,6 +18,19 @@ class BotHelper:
         self.tts_queue = TTSQueue(voice_client, self.bot)
         self.current_music_source = None
 
+    def decrease_volume(self):
+        if self.bot.vc:
+            self.bot.vc.source.volume -= 0.2
+
+    def increase_volume(self):
+        if self.bot.vc:
+            self.bot.vc.source.volume += 0.2
+
+    def set_volume(self, value):
+        value = value / 10
+        if self.bot.vc:
+            self.bot.vc.source.volume = value
+
     async def send_message(self, channel_id, content, embed=None, tts=False):
         channel = self.bot.get_channel(channel_id)
         if channel:
@@ -57,3 +70,17 @@ class BotHelper:
 
     async def _handle_tts_node(self, node):
         await self.play_tts(node["data"]["tts_url"])
+
+    def _handle_volume_node(self, node):
+        value = node["data"]["value"]
+        if "+" in value:
+            self.increase_volume()
+        elif "-" in value:
+            self.decrease_volume()
+        else:
+            try:
+                value = int(value)
+                self.set_volume(value)
+            except ValueError:
+                print(f"Could not parse volume value: {value}")
+                return
