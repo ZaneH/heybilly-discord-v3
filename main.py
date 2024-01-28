@@ -67,7 +67,8 @@ if __name__ == "__main__":
             return
 
         await ctx.respond("Connecting to your VC.", ephemeral=True)
-        bot.vc = await author_vc.channel.connect()
+        vc = await author_vc.channel.connect()
+        bot.helper.set_vc(vc)
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
@@ -78,6 +79,7 @@ if __name__ == "__main__":
 
         await ctx.respond("Disconnecting from VC.", ephemeral=True)
         await bot_vc.disconnect()
+        bot.helper.set_vc(None)
 
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))
