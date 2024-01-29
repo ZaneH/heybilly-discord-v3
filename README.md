@@ -1,7 +1,7 @@
 # HeyBilly Discord Bot 🎙️🤖
 
 ## Introduction
-This is the Discord component for [HeyBilly v2](https://github.com/ZaneH/HeyBilly-v2). If you're a user, it's a fun way to interact with your Discord server. If you're a developer, it demonstrates how to use RabbitMQ consumers to process messages from the voice assistant.
+This is the Discord component for [HeyBilly](https://github.com/ZaneH/HeyBilly). If you're a user, it's a fun way to interact with your Discord server. If you're a developer, it demonstrates how to use RabbitMQ consumers to process messages from the voice assistant.
 
 ## Features
 
@@ -16,12 +16,12 @@ This is the Discord component for [HeyBilly v2](https://github.com/ZaneH/HeyBill
 
 Transform your Discord server with these simple setup steps:
 
-- **Pre-requisite:** [HeyBilly v2](https://github.com/ZaneH/HeyBilly-v2) is running.
+- **Pre-requisite:** [HeyBilly](https://github.com/ZaneH/HeyBilly) is up and running.
 
 ### 1. Clone the Repository
 Clone the HeyBilly Discord bot:
 ```bash
-git clone https://github.com/ZaneH/heybilly-v2-discord.git
+git clone https://github.com/ZaneH/heybilly-discord.git
 ```
 
 ### 2. Configure the Environment
@@ -48,7 +48,7 @@ python main.py
 ```
 
 ## Usage
-Interact with the HeyBilly Discord bot using simple voice commands or text prompts. Explore the [vast array of features](https://github.com/ZaneH/heybilly-v2?tab=readme-ov-file#features) and fill your Discord server with fun and productivity.
+Interact with the HeyBilly Discord bot using simple voice commands or text prompts. Explore the [vast array of features](https://github.com/ZaneH/heybilly?tab=readme-ov-file#features) and fill your Discord server with fun and productivity.
 
 ## Contributions
 Open source is made possible by your ideas and contributions. Help enhance the HeyBilly Discord bot by:
@@ -64,7 +64,7 @@ The HeyBilly Discord bot is released under the MIT License. For more details, se
 
 ## Connect
 - Twitter: [@zanehelton](https://twitter.com/zanehelton)
-- GitHub URL: [HeyBilly Discord bot on GitHub](https://github.com/ZaneH/heybilly-v2-discord)
+- GitHub URL: [HeyBilly Discord bot on GitHub](https://github.com/ZaneH/heybilly-discord)
 
 ---
 
