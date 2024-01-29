@@ -33,16 +33,20 @@ class HeyBillyBot(discord.Bot):
 
     async def process_actions(self):
         while True:
-            action = await self.action_queue.get()
-            print(f"Processing action: {action}")
-            if action["node_type"] == "youtube.play":
-                await self.helper._handle_play_node(action)
-            elif action["node_type"] == "discord.post":
-                await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
-            elif action["node_type"] == "output.tts":
-                await self.helper._handle_tts_node(action)
-            elif action["node_type"] == "volume.set":
-                self.helper._handle_volume_node(action)
+            try:
+                action = await self.action_queue.get()
+                print(f"Processing action: {action}")
+                if action["node_type"] == "youtube.play":
+                    await self.helper._handle_play_node(action)
+                elif action["node_type"] == "discord.post":
+                    await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
+                elif action["node_type"] == "output.tts":
+                    await self.helper._handle_tts_node(action)
+                elif action["node_type"] == "volume.set":
+                    self.helper._handle_volume_node(action)
+            except Exception as e:
+                print(f"Error processing action: {e}")
+                print(f"Action: {action}")
 
     async def on_ready(self):
         print(f"Logged in as {self.user}.")

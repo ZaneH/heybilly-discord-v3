@@ -52,7 +52,7 @@ class BotHelper:
             self.current_music_source = None
 
     async def play_tts(self, tts_url):
-        tts_source = await self.create_ytdl_source(tts_url)
+        tts_source = await YTDLSource.from_url(tts_url, loop=self.bot.loop, stream=True)
         if self.tts_queue:
             await self.tts_queue.add_tts(tts_source)
 
