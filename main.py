@@ -1,17 +1,16 @@
 import asyncio
 import os
-import queue
 
 import discord
 from dotenv import load_dotenv
 
 from src.bot.helper import BotHelper
-from src.queue.action_consumer import ActionConsumer
+from src.queue.consumer_manager import ConsumerManager
 
 load_dotenv()
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
-DISCORD_CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID"))
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 
 
 class HeyBillyBot(discord.Bot):
@@ -20,16 +19,20 @@ class HeyBillyBot(discord.Bot):
         self.helper = BotHelper(self)
         self.action_queue = asyncio.Queue()
 
-        self.consumers = [
-            ActionConsumer(loop, "output.tts", self.action_queue),
-            ActionConsumer(loop, "volume.set", self.action_queue),
-            ActionConsumer(loop, "youtube.play", self.action_queue),
-            ActionConsumer(loop, "discord.post", self.action_queue),
+        self.consumer_manager = ConsumerManager(loop)
+        self.queue_names = [
+            "output.tts",
+            "volume.set",
+            "youtube.play",
+            "discord.post",
+            "sfx.play",
         ]
 
     async def start_consumers(self):
-        consumer_tasks = [consumer.start_consuming() for consumer in self.consumers]
-        await asyncio.gather(*consumer_tasks)
+        await self.consumer_manager.start()
+
+        for queue_name in self.queue_names:
+            await self.consumer_manager.create_consumer(queue_name, self.action_queue)
 
     async def process_actions(self):
         while True:
@@ -51,10 +54,11 @@ class HeyBillyBot(discord.Bot):
     async def on_ready(self):
         print(f"Logged in as {self.user}.")
         await self.start_consumers()
+
         self.loop.create_task(self.process_actions())
 
     async def close_connections(self):
-        await asyncio.gather(*(consumer.close_connection() for consumer in self.consumers))
+        await self.consumer_manager.close()
 
 
 if __name__ == "__main__":
