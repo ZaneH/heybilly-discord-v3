@@ -117,3 +117,19 @@ class BotHelper:
             except ValueError:
                 print(f"Could not parse volume value: {value}")
                 return
+
+    async def _handle_music_control_node(self, node):
+        action = node["data"]["action"]
+        action = action.lower()
+
+        if action == "stop":
+            if self.bot.vc.is_playing():
+                self.bot.vc.stop()
+        elif action == "pause":
+            if self.bot.vc.is_playing():
+                self.bot.vc.pause()
+        elif action == "play":
+            if self.bot.vc.is_paused():
+                self.bot.vc.resume()
+        else:
+            print(f"Unknown music control action: {action}")

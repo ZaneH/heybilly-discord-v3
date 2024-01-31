@@ -26,6 +26,7 @@ class HeyBillyBot(discord.Bot):
             "youtube.play",
             "discord.post",
             "sfx.play",
+            "music.control"
         ]
 
     async def start_consumers(self):
@@ -49,6 +50,10 @@ class HeyBillyBot(discord.Bot):
                     self.helper._handle_volume_node(action)
                 elif action["node_type"] == "sfx.play":
                     await self.helper._handle_sfx_node(action)
+                elif action["node_type"] == "music.control":
+                    await self.helper._handle_music_control_node(action)
+                else:
+                    print(f"Unknown node type: {action['node_type']}")
             except Exception as e:
                 print(f"Error processing action: {e}")
                 print(f"Action: {action}")
