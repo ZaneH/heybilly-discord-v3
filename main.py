@@ -110,6 +110,32 @@ if __name__ == "__main__":
         bot.helper.guild_id = None
         bot.helper.set_vc(None)
 
+    @bot.slash_command(name="resume", description="Resume music playback.")
+    async def resume(ctx: discord.context.ApplicationContext):
+        if bot.helper.resume_music():
+            await ctx.respond("Resuming music.", ephemeral=True)
+        else:
+            await ctx.respond("No music to resume.", ephemeral=True)
+
+    @bot.slash_command(name="pause", description="Pause music playback.")
+    async def pause(ctx: discord.context.ApplicationContext):
+        if bot.helper.pause_music():
+            await ctx.respond("Pausing music.", ephemeral=True)
+        else:
+            await ctx.respond("No music is playing.", ephemeral=True)
+
+    @bot.slash_command(name="stop", description="Stop music playback.")
+    async def stop(ctx: discord.context.ApplicationContext):
+        if bot.helper.stop_music():
+            await ctx.respond("Stopping music.", ephemeral=True)
+        else:
+            await ctx.respond("No music is playing.", ephemeral=True)
+
+    @bot.slash_command(name="volume", description="Set the volume.")
+    async def volume(ctx: discord.context.ApplicationContext, value: int):
+        bot.helper.set_volume(value)
+        await ctx.respond(f"Volume set to {value}.", ephemeral=True)
+
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))
     except KeyboardInterrupt:

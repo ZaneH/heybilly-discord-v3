@@ -14,6 +14,7 @@ class BotHelper:
         self.tts_queue = None
         self.current_music_source = None
         self.current_sfx_source = None
+        self.user_music_volume = 0.5
 
     def set_vc(self, voice_client):
         if voice_client is None:
@@ -34,7 +35,10 @@ class BotHelper:
             self.bot.vc.source.volume += 0.2
 
     def set_volume(self, value):
+        value = max(0, min(10, value))
         value = value / 10
+        self.user_music_volume = value
+
         if self.bot.vc:
             self.bot.vc.source.volume = value
 
@@ -58,6 +62,7 @@ class BotHelper:
         self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
         self.bot.vc.play(self.current_music_source,
                          after=self.music_stopped_callback)
+        self.bot.vc.source.volume = self.user_music_volume
 
     async def play_sfx(self, sfx_url, sfx_duration=5):
         old_source = self.bot.vc.source if self.bot.vc.is_playing() else None
@@ -73,6 +78,7 @@ class BotHelper:
         self.current_sfx_source = await YTDLSource.from_url(sfx_url, loop=self.bot.loop, stream=True)
         self.bot.vc.play(self.current_sfx_source,
                          after=lambda e: sfx_stopped_callback(e, old_source, timeout_task))
+        self.bot.vc.source.volume = self.user_music_volume
 
         def sfx_stopped_callback(error, old_source, timeout_task=None):
             if error:
@@ -85,6 +91,7 @@ class BotHelper:
                 if old_source:
                     self.bot.vc.play(
                         old_source, after=self.music_stopped_callback)
+                    self.bot.vc.source.volume = self.user_music_volume
 
         async def stop_playback_after_timeout(duration):
             await asyncio.sleep(duration)
@@ -96,6 +103,24 @@ class BotHelper:
         tts_source = await YTDLSource.from_url(tts_url, loop=self.bot.loop, stream=True)
         if self.tts_queue:
             await self.tts_queue.add_tts(tts_source)
+
+    def resume_music(self) -> bool:
+        if self.current_music_source and self.bot.vc.is_paused():
+            self.bot.vc.resume()
+            return True
+        return False
+
+    def pause_music(self) -> bool:
+        if self.current_music_source and self.bot.vc.is_playing():
+            self.bot.vc.pause()
+            return True
+        return False
+
+    def stop_music(self) -> bool:
+        if self.current_music_source and self.bot.vc.is_playing():
+            self.bot.vc.stop()
+            return True
+        return False
 
     async def _handle_play_node(self, node):
         await self.play_youtube(node["data"]["video_url"])
