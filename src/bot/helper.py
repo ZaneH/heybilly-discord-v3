@@ -70,6 +70,12 @@ class BotHelper:
         if self.bot.vc.is_playing():
             self.bot.vc.pause()
 
+        async def stop_playback_after_timeout(duration):
+            await asyncio.sleep(duration)
+            if self.current_sfx_source:
+                if self.bot.vc.is_playing():
+                    self.bot.vc.stop()
+
         if sfx_duration > 0:
             timeout_task = asyncio.create_task(
                 stop_playback_after_timeout(sfx_duration))
@@ -92,12 +98,6 @@ class BotHelper:
                     self.bot.vc.play(
                         old_source, after=self.music_stopped_callback)
                     self.bot.vc.source.volume = self.user_music_volume
-
-        async def stop_playback_after_timeout(duration):
-            await asyncio.sleep(duration)
-            if self.current_sfx_source:
-                if self.bot.vc.is_playing():
-                    self.bot.vc.stop()
 
     async def play_tts(self, tts_url):
         tts_source = await YTDLSource.from_url(tts_url, loop=self.bot.loop, stream=True)
