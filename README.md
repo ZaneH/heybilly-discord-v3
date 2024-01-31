@@ -26,23 +26,22 @@ git clone https://github.com/ZaneH/heybilly-discord.git
 
 ### 2. Configure the Environment
 Set up a conda environment:
-
 ```bash
 conda create -n heybilly-discord python=3.10 -y
 conda activate heybilly-discord
 ```
 
 ### 3. Install Dependencies
-Equip your bot with the necessary tools:
+Install dependencies with pip:
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 4. Set Up Configuration
-Transition `.env.sample` to `.env` and fill in your Discord bot credentials and other necessary API keys.
+Move `.env.sample` to `.env` and fill in your Discord bot credentials and other necessary API keys.
 
 ### 5. Launch the Bot
-Awaken the HeyBilly Discord bot:
+Launch the HeyBilly Discord bot:
 ```bash
 python main.py
 ```
