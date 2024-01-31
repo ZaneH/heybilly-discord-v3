@@ -21,7 +21,7 @@ class ActionConsumer:
             return
 
         channel = await self.connection.channel()
-        queue = await channel.declare_queue(self.queue_name)
+        queue = await channel.get_queue(self.queue_name)
 
         await queue.consume(self.on_message)
 

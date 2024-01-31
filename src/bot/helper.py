@@ -2,10 +2,15 @@ import asyncio
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
 
+BOT_NAME = "Billy"
+BOT_PROCESSING_NAME = "Billy 💡"
+
 
 class BotHelper:
     def __init__(self, bot):
         self.bot = bot
+        self.guild_id = None
+
         self.tts_queue = None
         self.current_music_source = None
         self.current_sfx_source = None
@@ -133,3 +138,17 @@ class BotHelper:
                 self.bot.vc.resume()
         else:
             print(f"Unknown music control action: {action}")
+
+    async def _handle_request_status_update(self, update):
+        if self.guild_id is None:
+            return
+
+        try:
+            status = update["status"]
+            if status == "processing":
+                await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_PROCESSING_NAME)
+            elif status == "completed":
+                await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_NAME)
+        except Exception as e:
+            print(f"Error updating status: {e}")
+            print(f"Update: {update}")

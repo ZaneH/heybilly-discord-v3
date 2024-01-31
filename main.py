@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 
 import discord
 from dotenv import load_dotenv
@@ -26,7 +27,8 @@ class HeyBillyBot(discord.Bot):
             "youtube.play",
             "discord.post",
             "sfx.play",
-            "music.control"
+            "music.control",
+            "request.status"
         ]
 
     async def start_consumers(self):
@@ -39,19 +41,23 @@ class HeyBillyBot(discord.Bot):
         while True:
             try:
                 action = await self.action_queue.get()
+                node_type = action.get("node_type", None)
                 print(f"Processing action: {action}")
-                if action["node_type"] == "youtube.play":
+
+                if node_type == "youtube.play":
                     await self.helper._handle_play_node(action)
-                elif action["node_type"] == "discord.post":
+                elif node_type == "discord.post":
                     await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
-                elif action["node_type"] == "output.tts":
+                elif node_type == "output.tts":
                     await self.helper._handle_tts_node(action)
-                elif action["node_type"] == "volume.set":
+                elif node_type == "volume.set":
                     self.helper._handle_volume_node(action)
-                elif action["node_type"] == "sfx.play":
+                elif node_type == "sfx.play":
                     await self.helper._handle_sfx_node(action)
-                elif action["node_type"] == "music.control":
+                elif node_type == "music.control":
                     await self.helper._handle_music_control_node(action)
+                elif action["status"] == "processing" or action["status"] == "completed":
+                    await self.helper._handle_request_status_update(action)
                 else:
                     print(f"Unknown node type: {action['node_type']}")
             except Exception as e:
@@ -85,6 +91,7 @@ if __name__ == "__main__":
 
         await ctx.respond("Connecting to your VC.", ephemeral=True)
         vc = await author_vc.channel.connect()
+        bot.helper.guild_id = ctx.guild_id
         bot.helper.set_vc(vc)
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
@@ -96,6 +103,7 @@ if __name__ == "__main__":
 
         await ctx.respond("Disconnecting from VC.", ephemeral=True)
         await bot_vc.disconnect()
+        bot.helper.guild_id = None
         bot.helper.set_vc(None)
 
     try:
