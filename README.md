@@ -28,8 +28,8 @@ git clone https://github.com/ZaneH/heybilly-discord.git
 Set up a conda environment:
 
 ```bash
-conda create -n heybilly-discord-bot python=3.10 -y
-conda activate heybilly-discord-bot
+conda create -n heybilly-discord python=3.10 -y
+conda activate heybilly-discord
 ```
 
 ### 3. Install Dependencies

@@ -1,3 +1,4 @@
+import asyncio
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
 
@@ -7,13 +8,14 @@ class BotHelper:
         self.bot = bot
         self.tts_queue = None
         self.current_music_source = None
+        self.current_sfx_source = None
 
     def set_vc(self, voice_client):
         if voice_client is None:
             self.bot.vc = None
             self.bot.source_queue = None
             return
-        
+
         self.bot.vc = voice_client
         self.tts_queue = TTSQueue(voice_client, self.bot)
         self.current_music_source = None
@@ -38,18 +40,52 @@ class BotHelper:
         else:
             print(f"Channel with ID {channel_id} not found.")
 
+    def music_stopped_callback(self, error):
+        if error:
+            print(f'YTDL Player error: {error}')
+        else:
+            self.current_music_source = None
+
     async def play_youtube(self, video_url):
         if self.current_music_source:
             self.bot.vc.stop()
 
         self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
-        self.bot.vc.play(self.current_music_source, after=self.after_play_callback)
+        self.bot.vc.play(self.current_music_source,
+                         after=self.music_stopped_callback)
 
-    def after_play_callback(self, error):
-        if error:
-            print(f'YTDL Player error: {error}')
-        else:
-            self.current_music_source = None
+    async def play_sfx(self, sfx_url, sfx_duration=5):
+        old_source = self.bot.vc.source if self.bot.vc.is_playing() else None
+
+        if self.bot.vc.is_playing():
+            self.bot.vc.pause()
+
+        if sfx_duration > 0:
+            timeout_task = asyncio.create_task(
+                stop_playback_after_timeout(sfx_duration))
+
+        # Load and play the SFX
+        self.current_sfx_source = await YTDLSource.from_url(sfx_url, loop=self.bot.loop, stream=True)
+        self.bot.vc.play(self.current_sfx_source,
+                         after=lambda e: sfx_stopped_callback(e, old_source, timeout_task))
+
+        def sfx_stopped_callback(error, old_source, timeout_task=None):
+            if error:
+                print(f'SFX Player error: {error}')
+            else:
+                if timeout_task:
+                    timeout_task.cancel()
+
+                self.current_sfx_source = None
+                if old_source:
+                    self.bot.vc.play(
+                        old_source, after=self.music_stopped_callback)
+
+        async def stop_playback_after_timeout(duration):
+            await asyncio.sleep(duration)
+            if self.current_sfx_source:
+                if self.bot.vc.is_playing():
+                    self.bot.vc.stop()
 
     async def play_tts(self, tts_url):
         tts_source = await YTDLSource.from_url(tts_url, loop=self.bot.loop, stream=True)
@@ -64,6 +100,9 @@ class BotHelper:
 
     async def _handle_tts_node(self, node):
         await self.play_tts(node["data"]["tts_url"])
+
+    async def _handle_sfx_node(self, node):
+        await self.play_sfx(node["data"]["video_url"])
 
     def _handle_volume_node(self, node):
         value = node["data"]["value"]

@@ -47,6 +47,8 @@ class HeyBillyBot(discord.Bot):
                     await self.helper._handle_tts_node(action)
                 elif action["node_type"] == "volume.set":
                     self.helper._handle_volume_node(action)
+                elif action["node_type"] == "sfx.play":
+                    await self.helper._handle_sfx_node(action)
             except Exception as e:
                 print(f"Error processing action: {e}")
                 print(f"Action: {action}")
