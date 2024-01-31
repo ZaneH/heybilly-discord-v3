@@ -78,9 +78,13 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     bot = HeyBillyBot(loop)
 
-    # change this if you're not on macOS
     if not discord.opus.is_loaded():
-        discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+        try:
+            discord.opus.load_opus("opus")
+        except OSError:
+            discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+        except Exception as e:
+            print(f"Error loading opus library: {e}")
 
     @bot.slash_command(name="connect", description="Connect to your voice channel.")
     async def connect(ctx: discord.context.ApplicationContext):
