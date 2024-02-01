@@ -2,7 +2,8 @@ import asyncio
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
 
-BOT_NAME = "Billy"
+BOT_NAME = "Billy 💤"
+BOT_AWAKE_NAME = "Billy 💬"
 BOT_PROCESSING_NAME = "Billy 💡"
 
 
@@ -170,7 +171,9 @@ class BotHelper:
 
         try:
             status = update["status"]
-            if status == "processing":
+            if status == "awake":
+                await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_AWAKE_NAME)
+            elif status == "processing":
                 await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_PROCESSING_NAME)
             elif status == "completed":
                 await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_NAME)

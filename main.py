@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 
 import discord
 from dotenv import load_dotenv
@@ -56,10 +55,10 @@ class HeyBillyBot(discord.Bot):
                     await self.helper._handle_sfx_node(action)
                 elif node_type == "music.control":
                     await self.helper._handle_music_control_node(action)
-                elif action["status"] == "processing" or action["status"] == "completed":
+                elif action.get("status", None):
                     await self.helper._handle_request_status_update(action)
                 else:
-                    print(f"Unknown node type: {action['node_type']}")
+                    print(f"Unknown action: {action}")
             except Exception as e:
                 print(f"Error processing action: {e}")
                 print(f"Action: {action}")
