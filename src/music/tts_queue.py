@@ -22,7 +22,7 @@ class TTSQueue:
         if self.voice_client.is_playing() and self.bot.helper.current_music_source:
             # Pause the music and store the current music source
             self.voice_client.pause()
-            self.paused_music_source = self.bot.helper.current_music_source
+            self.paused_music_source = self.voice_client.source if self.bot.helper.current_music_source else None
 
         while not self.tts_sources.empty():
             tts_source = await self.tts_sources.get()
@@ -32,15 +32,16 @@ class TTSQueue:
 
         if self.paused_music_source:
             # Resume the paused music source
-            self.voice_client.play(self.paused_music_source, after=self.bot.helper.after_play_callback)
+            self.voice_client.play(
+                self.paused_music_source, after=self.bot.helper.music_stopped_callback)
             self.paused_music_source = None
 
-        self.is_playing_tts = False
-
     async def wait_for_source_to_finish(self):
-        while self.voice_client.is_playing():
+        while self.is_playing_tts:
             await asyncio.sleep(0.1)
 
     def after_callback(self, error):
         if error:
             print(f'TTS Player error: {error}')
+
+        self.is_playing_tts = False

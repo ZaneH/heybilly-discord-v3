@@ -81,6 +81,7 @@ if __name__ == "__main__":
             discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
         except Exception as e:
             print(f"Error loading opus library: {e}")
+            raise e
 
     @bot.slash_command(name="connect", description="Connect to your voice channel.")
     async def connect(ctx: discord.context.ApplicationContext):
