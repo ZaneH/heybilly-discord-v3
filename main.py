@@ -23,7 +23,6 @@ class HeyBillyBot(discord.Bot):
         self.queue_names = [
             "output.tts",
             "volume.set",
-            "youtube.play",
             "discord.post",
             "sfx.play",
             "music.control",
@@ -43,9 +42,7 @@ class HeyBillyBot(discord.Bot):
                 node_type = action.get("node_type", None)
                 print(f"Processing action: {action}")
 
-                if node_type == "youtube.play":
-                    await self.helper._handle_play_node(action)
-                elif node_type == "discord.post":
+                if node_type == "discord.post":
                     await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
                 elif node_type == "output.tts":
                     await self.helper._handle_tts_node(action)

@@ -123,9 +123,6 @@ class BotHelper:
             return True
         return False
 
-    async def _handle_play_node(self, node):
-        await self.play_youtube(node["data"]["video_url"])
-
     async def _handle_post_node(self, node, discord_channel_id):
         await self.send_message(discord_channel_id, node["data"]["text"])
 
@@ -153,13 +150,18 @@ class BotHelper:
         action = node["data"]["action"]
         action = action.lower()
 
-        if action == "stop":
+        if action == "start":
+            if self.bot.vc.is_playing() or self.bot.vc.is_paused():
+                self.bot.vc.stop()
+
+            await self.play_youtube(node["data"]["video_url"])
+        elif action == "stop":
             if self.bot.vc.is_playing():
                 self.bot.vc.stop()
         elif action == "pause":
             if self.bot.vc.is_playing():
                 self.bot.vc.pause()
-        elif action == "play":
+        elif action == "resume":
             if self.bot.vc.is_paused():
                 self.bot.vc.resume()
         else:
