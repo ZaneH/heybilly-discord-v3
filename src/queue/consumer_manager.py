@@ -1,6 +1,8 @@
+import logging
 import aio_pika
 
 from src.queue.action_consumer import ActionConsumer
+logger = logging.getLogger(__name__)
 
 
 class ConsumerManager:
@@ -13,9 +15,9 @@ class ConsumerManager:
     async def start(self):
         self.connection = await aio_pika.connect_robust(host=self.host, loop=self.loop)
         if self.connection:
-            print("Connected to RabbitMQ.")
+            logger.info("Connected to RabbitMQ.")
         else:
-            print("Failed to connect to RabbitMQ.")
+            logger.error("Failed to connect to RabbitMQ.")
 
     async def create_consumer(self, queue_name, action_queue):
         consumer = ActionConsumer(

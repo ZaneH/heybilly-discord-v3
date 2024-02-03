@@ -1,4 +1,7 @@
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TTSQueue:
@@ -42,6 +45,6 @@ class TTSQueue:
 
     def after_callback(self, error):
         if error:
-            print(f'TTS Player error: {error}')
+            logger.error(f'TTS Player error: {error}')
 
         self.is_playing_tts = False

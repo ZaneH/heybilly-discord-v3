@@ -1,5 +1,8 @@
 import json
+import logging
 import aio_pika
+
+logger = logging.getLogger(__name__)
 
 
 class ActionConsumer:
@@ -17,7 +20,7 @@ class ActionConsumer:
 
     async def start_consuming(self):
         if not self.connection:
-            print("No connection to RabbitMQ.")
+            logger.error("No connection to RabbitMQ.")
             return
 
         channel = await self.connection.channel()

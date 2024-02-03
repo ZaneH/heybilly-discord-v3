@@ -1,10 +1,14 @@
 import asyncio
+import logging
+import discord
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
 
 BOT_NAME = "Billy 💤"
 BOT_AWAKE_NAME = "Billy 💬"
 BOT_PROCESSING_NAME = "Billy 💡"
+
+logger = logging.getLogger(__name__)
 
 
 class BotHelper:
@@ -27,7 +31,7 @@ class BotHelper:
         self.tts_queue = TTSQueue(voice_client, self.bot)
         self.current_music_source = None
 
-    def get_vc(self):
+    def get_vc(self) -> discord.VoiceClient | None:
         return self.bot.vc
 
     def decrease_volume(self):
@@ -51,11 +55,11 @@ class BotHelper:
         if channel:
             await channel.send(content=content, embed=embed, tts=tts)
         else:
-            print(f"Channel with ID {channel_id} not found.")
+            logger.error(f"Channel with ID {channel_id} not found.")
 
     def music_stopped_callback(self, error):
         if error:
-            print(f'YTDL Player error: {error}')
+            logger.error(f'YTDL Player error: {error}')
         else:
             self.current_music_source = None
 
@@ -92,7 +96,7 @@ class BotHelper:
 
         def sfx_stopped_callback(error, old_source, timeout_task=None):
             if error:
-                print(f'SFX Player error: {error}')
+                logger.error(f'SFX Player error: {error}')
             else:
                 if timeout_task:
                     timeout_task.cancel()
@@ -146,7 +150,7 @@ class BotHelper:
                 value = int(value)
                 self.set_volume(value)
             except ValueError:
-                print(f"Could not parse volume value: {value}")
+                logger.error(f"Could not parse volume value: {value}")
                 return
 
     async def _handle_music_control_node(self, node):
@@ -168,7 +172,7 @@ class BotHelper:
             if self.bot.vc.is_paused():
                 self.bot.vc.resume()
         else:
-            print(f"Unknown music control action: {action}")
+            logger.error(f"Unknown music control action: {action}")
 
     async def _handle_request_status_update(self, update):
         if self.guild_id is None:
@@ -183,5 +187,5 @@ class BotHelper:
             elif status == "completed":
                 await self.bot.get_guild(self.guild_id).get_member(self.bot.user.id).edit(nick=BOT_NAME)
         except Exception as e:
-            print(f"Error updating status: {e}")
-            print(f"Update: {update}")
+            logger.error(f"Error updating status: {e}")
+            logger.error(f"Data: {update}")

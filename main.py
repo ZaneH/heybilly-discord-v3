@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 
 import discord
@@ -7,11 +8,15 @@ from dotenv import load_dotenv
 from src.bot.helper import BotHelper
 from src.bot.sinks.whisper_sink import WhisperSink
 from src.queue.consumer_manager import ConsumerManager
+from src.config.cliargs import CLIArgs
+from src.utils.commandline import CommandLine
 
 load_dotenv()
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
+
+logger = logging.getLogger(__name__)
 
 
 async def whisper_message(queue: asyncio.Queue):
@@ -25,9 +30,9 @@ async def whisper_message(queue: asyncio.Queue):
                 user_id = response["user"]
                 text = response["result"]
 
-                print(f"User {user_id} said: {text}")
+                logger.info(f"User {user_id} said: {text}")
         except Exception as e:
-            print(f"Error processing whisper message: {e}")
+            logger.error(f"Error processing whisper message: {e}")
 
 
 class HeyBillyBot(discord.Bot):
@@ -35,7 +40,8 @@ class HeyBillyBot(discord.Bot):
         super().__init__(command_prefix="!", loop=loop)
         self.helper = BotHelper(self)
         self.action_queue = asyncio.Queue()
-        self.is_recording = False
+        self.guild_is_recording = {}
+        self.guild_whisper_sinks = {}
 
         self.consumer_manager = ConsumerManager(loop)
         self.queue_names = [
@@ -58,7 +64,7 @@ class HeyBillyBot(discord.Bot):
             try:
                 action = await self.action_queue.get()
                 node_type = action.get("node_type", None)
-                print(f"Processing action: {action}")
+                logger.debug(f"Processing action: {action}")
 
                 if node_type == "discord.post":
                     await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
@@ -73,47 +79,43 @@ class HeyBillyBot(discord.Bot):
                 elif action.get("status", None):
                     await self.helper._handle_request_status_update(action)
                 else:
-                    print(f"Unknown action: {action}")
+                    logger.error(f"Unknown action: {action}")
             except Exception as e:
-                print(f"Error processing action: {e}")
-                print(f"Action: {action}")
+                logger.error(f"Error processing action: {e}")
+                logger.error(f"Action: {action}")
 
     async def on_ready(self):
-        print(f"Logged in as {self.user}.")
+        logger.info(f"Logged in as {self.user}.")
         await self.start_consumers()
 
         self.loop.create_task(self.process_actions())
 
-    async def close_connections(self):
+    async def close_consumers(self):
         await self.consumer_manager.close()
 
+    def _close_and_clean_sink_for_guild(self, guild_id: int):
+        whisper_sink: WhisperSink | None = self.guild_whisper_sinks.get(
+            guild_id, None)
 
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    bot = HeyBillyBot(loop)
+        if whisper_sink:
+            logger.debug(f"Stopping whisper sink, requested by {guild_id}.")
+            whisper_sink.stop_voice_thread()
+            del self.guild_whisper_sinks[guild_id]
+            whisper_sink.close()
 
-    if not discord.opus.is_loaded():
+    def start_recording(self, ctx: discord.context.ApplicationContext):
         try:
-            discord.opus.load_opus("opus")
-        except OSError:
-            discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
-        except Exception as e:
-            print(f"Error loading opus library: {e}")
-            raise e
+            guild_voice_sink = self.guild_whisper_sinks.get(ctx.guild_id, None)
+            if guild_voice_sink:
+                logger.debug(
+                    f"Sink is already active for guild {ctx.guild_id}.")
+                return
 
-    @bot.slash_command(name="connect", description="Connect to your voice channel.")
-    async def connect(ctx: discord.context.ApplicationContext):
-        author_vc = ctx.author.voice
-        if not author_vc:
-            await ctx.respond("You are not in a voice channel.", ephemeral=True)
-            return
+            async def on_stop_record_callback(sink: WhisperSink, ctx):
+                logger.debug(
+                    f"{ctx.channel.guild.id} -> on_stop_record_callback")
+                self._close_and_clean_sink_for_guild(ctx.guild_id)
 
-        await ctx.respond("Connecting to your VC.", ephemeral=True)
-        vc = await author_vc.channel.connect()
-        bot.helper.guild_id = ctx.guild_id
-        bot.helper.set_vc(vc)
-
-        try:
             queue = asyncio.Queue()
             loop.create_task(whisper_message(queue))
 
@@ -126,21 +128,99 @@ if __name__ == "__main__":
                 no_data_multiplier=0.75,
                 max_phrase_timeout=20,
                 min_phrase_length=3,
-                max_speakers=4
             )
 
-            vc.start_recording(whisper_sink, callback, ctx)
+            self.helper.get_vc().start_recording(
+                whisper_sink, on_stop_record_callback, ctx)
             whisper_sink.start_voice_thread()
-            bot.is_recording = True
+            self.guild_is_recording[ctx.guild_id] = True
+
+            self.guild_whisper_sinks[ctx.guild_id] = whisper_sink
         except Exception as e:
-            print(f"Error starting whisper sink: {e}")
+            logger.error(f"Error starting whisper sink: {e}")
 
-    async def callback(sink: WhisperSink, ctx):
-        print("Stopping recording.")
-        sink.stop_voice_thread()
-        bot.is_recording = False
+    def stop_recording(self, ctx: discord.context.ApplicationContext):
+        vc = ctx.guild.voice_client
+        if vc:
+            self.guild_is_recording[ctx.guild_id] = False
+            vc.stop_recording()
 
-        sink.close()
+        self._close_and_clean_sink_for_guild(ctx.guild_id)
+
+    async def stop_and_cleanup(self):
+        try:
+            for sink in self.guild_whisper_sinks.values():
+                sink.close()
+                sink.stop_voice_thread()
+                logger.debug(
+                    f"Stopped whisper sink for guild {sink.vc.channel.guild.id} in cleanup.")
+            self.guild_whisper_sinks.clear()
+        except Exception as e:
+            logger.error(f"Error stopping whisper sinks: {e}")
+        finally:
+            logger.info("Cleanup completed.")
+
+
+def configure_logging():
+    logging.getLogger('discord').setLevel(logging.WARNING)
+    logging.getLogger('aiormq').setLevel(logging.ERROR)
+    logging.getLogger('aio_pika').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    logging.getLogger('faster_whisper').setLevel(logging.WARNING)
+
+    if CLIArgs.verbose:
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(name)s: %(message)s')
+
+    else:
+        logging.basicConfig(level=logging.INFO,
+                            format='%(name)s: %(message)s')
+
+
+if __name__ == "__main__":
+    args = CommandLine.read_command_line()
+    CLIArgs.update_from_args(args)
+
+    configure_logging()
+
+    loop = asyncio.get_event_loop()
+    bot = HeyBillyBot(loop)
+
+    if not discord.opus.is_loaded():
+        try:
+            discord.opus.load_opus("opus")
+        except OSError:
+            discord.opus.load_opus("/opt/homebrew/lib/libopus.dylib")
+        except Exception as e:
+            logger.error(f"Error loading opus library: {e}")
+            raise e
+
+    @bot.event
+    async def on_voice_state_update(member, before, after):
+        if member.id == bot.user.id:
+            if after.channel is None:
+                bot.helper.guild_id = None
+                bot.helper.set_vc(None)
+
+                bot._close_and_clean_sink_for_guild(before.channel.guild.id)
+
+    @bot.slash_command(name="connect", description="Connect to your voice channel.")
+    async def connect(ctx: discord.context.ApplicationContext):
+        author_vc = ctx.author.voice
+        if not author_vc:
+            await ctx.respond("You are not in a voice channel.", ephemeral=True)
+            return
+
+        await ctx.trigger_typing()
+        try:
+            vc = await author_vc.channel.connect()
+            bot.helper.guild_id = ctx.guild_id
+            bot.helper.set_vc(vc)
+            await ctx.respond(f"Connected to {author_vc.channel.name}.", ephemeral=True)
+        except Exception as e:
+            await ctx.respond(f"{e}", ephemeral=True)
+
+        bot.start_recording(ctx)
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
@@ -150,12 +230,12 @@ if __name__ == "__main__":
             return
 
         await ctx.respond("Disconnecting from VC.", ephemeral=True)
+        if bot.guild_is_recording.get(ctx.guild_id, False):
+            bot.stop_recording(ctx)
+
         await bot_vc.disconnect()
         bot.helper.guild_id = None
         bot.helper.set_vc(None)
-
-        if bot.is_recording:
-            bot_vc.stop_recording()
 
     @bot.slash_command(name="resume", description="Resume music playback.")
     async def resume(ctx: discord.context.ApplicationContext):
@@ -186,10 +266,11 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))
     except KeyboardInterrupt:
-        print("Shutting down...")
+        logger.info("^C received, shutting down...")
+        asyncio.run(bot.stop_and_cleanup())
     finally:
         # Close all connections
-        loop.run_until_complete(bot.close_connections())
+        loop.run_until_complete(bot.close_consumers())
 
         tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
         for task in tasks:

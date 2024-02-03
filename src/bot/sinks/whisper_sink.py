@@ -1,3 +1,4 @@
+import logging
 from queue import Queue
 from tempfile import NamedTemporaryFile
 import io
@@ -14,6 +15,8 @@ import speech_recognition as sr
 
 audio_model = WhisperModel("medium.en", device="cpu", compute_type="float32")
 
+logger = logging.getLogger(__name__)
+
 
 class Speaker:
     """
@@ -22,7 +25,6 @@ class Speaker:
 
     def __init__(self, user, data):
         self.user = user
-
         self.data = [data]
 
         current_time = time.time()
@@ -91,15 +93,31 @@ class WhisperSink(Sink):
         self.voice_queue = Queue()
 
     def start_voice_thread(self):
+        def thread_exception_hook(args):
+            logger.debug(
+                f"""Exception in voice thread: {args}
+Likely disconnected while listening.""")
+
+        logger.debug(
+            f"Starting whisper sink thread for guild {self.vc.channel.guild.id}.")
         self.voice_thread = threading.Thread(
             target=self.insert_voice, args=(), daemon=True)
+        threading.excepthook = thread_exception_hook
         self.voice_thread.start()
 
     def stop_voice_thread(self):
-        self.voice_thread.join()
+        self.running = False
+        try:
+            self.voice_thread.join()
+        except Exception as e:
+            logger.error(f"Unexpected error during thread join: {e}")
+        finally:
+            logger.debug(
+                f"A sink thread was stopped for guild {self.vc.channel.guild.id}.")
 
     def is_valid_phrase(self, speaker_phrase, result):
-        print(f"Checking {speaker_phrase} != {result}")
+        logger.debug(
+            f"Waiting for final phrase: {speaker_phrase} != {result}")
         return speaker_phrase != result
 
     def transcribe_audio(self, temp_file):
@@ -121,7 +139,7 @@ class WhisperSink(Sink):
 
             return result
         except Exception as e:
-            print(f"Error in transcribing_audio: {e}")
+            logger.error(f"Error transcribing audio: {e}")
             return ""
 
     def transcribe(self, speaker: Speaker):
@@ -130,6 +148,7 @@ class WhisperSink(Sink):
             self.vc.decoder.SAMPLING_RATE,
             self.vc.decoder.SAMPLE_SIZE // self.vc.decoder.CHANNELS,
         )
+
         wav_data = io.BytesIO(audio_data.get_wav_data())
 
         with open(self.temp_file, "wb") as file:
@@ -184,7 +203,8 @@ class WhisperSink(Sink):
 
                     if len(speaker.phrase) >= self.min_phrase_length:
                         # If the user stops saying anything new or has been speaking too long.
-                        print(f"{time.time()} {word_timeout}")
+                        logger.debug(
+                            f"[time, word timeout]: [{time.time()}, {word_timeout}]")
                         if (
                             current_time - speaker.last_word > word_timeout
                             or current_time - speaker.last_phrase > self.max_phrase_timeout
@@ -200,7 +220,7 @@ class WhisperSink(Sink):
                 # Loops with no wait time is bad
                 time.sleep(0.45)
             except Exception as e:
-                print(f"Error in insert_voice: {e}")
+                logger.error(f"Error in insert_voice: {e}")
 
     @Filters.container
     def write(self, data, user):
@@ -216,6 +236,7 @@ class WhisperSink(Sink):
         self.voice_queue.put_nowait([user, data])
 
     def close(self):
-        print("Closing whisper sink.")
+        logger.debug("Closing whisper sink.")
         self.running = False
         self.queue.put_nowait(None)
+        super().cleanup()
