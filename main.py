@@ -5,6 +5,7 @@ import discord
 from dotenv import load_dotenv
 
 from src.bot.helper import BotHelper
+from src.bot.sinks.whisper_sink import WhisperSink
 from src.queue.consumer_manager import ConsumerManager
 
 load_dotenv()
@@ -13,11 +14,28 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 
 
+async def whisper_message(queue: asyncio.Queue):
+    while True:
+        try:
+            response = await queue.get()
+
+            if response is None:
+                break
+            else:
+                user_id = response["user"]
+                text = response["result"]
+
+                print(f"User {user_id} said: {text}")
+        except Exception as e:
+            print(f"Error processing whisper message: {e}")
+
+
 class HeyBillyBot(discord.Bot):
     def __init__(self, loop):
         super().__init__(command_prefix="!", loop=loop)
         self.helper = BotHelper(self)
         self.action_queue = asyncio.Queue()
+        self.is_recording = False
 
         self.consumer_manager = ConsumerManager(loop)
         self.queue_names = [
@@ -95,9 +113,38 @@ if __name__ == "__main__":
         bot.helper.guild_id = ctx.guild_id
         bot.helper.set_vc(vc)
 
+        try:
+            queue = asyncio.Queue()
+            loop.create_task(whisper_message(queue))
+
+            whisper_sink = WhisperSink(
+                queue,
+                loop,
+                data_length=50000,
+                quiet_phrase_timeout=1.25,
+                mid_sentence_multiplier=1.75,
+                no_data_multiplier=0.75,
+                max_phrase_timeout=20,
+                min_phrase_length=3,
+                max_speakers=4
+            )
+
+            vc.start_recording(whisper_sink, callback, ctx)
+            whisper_sink.start_voice_thread()
+            bot.is_recording = True
+        except Exception as e:
+            print(f"Error starting whisper sink: {e}")
+
+    async def callback(sink: WhisperSink, ctx):
+        print("Stopping recording.")
+        sink.stop_voice_thread()
+        bot.is_recording = False
+
+        sink.close()
+
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
-        bot_vc = ctx.voice_client
+        bot_vc = bot.helper.get_vc()
         if not bot_vc:
             await ctx.respond("I am not in your voice channel.", ephemeral=True)
             return
@@ -106,6 +153,9 @@ if __name__ == "__main__":
         await bot_vc.disconnect()
         bot.helper.guild_id = None
         bot.helper.set_vc(None)
+
+        if bot.is_recording:
+            bot_vc.stop_recording()
 
     @bot.slash_command(name="resume", description="Resume music playback.")
     async def resume(ctx: discord.context.ApplicationContext):

@@ -2,3 +2,7 @@ py-cord[voice]
 yt-dlp
 aio-pika
 python-dotenv
+
+# Voice recognition
+faster-whisper>=0.10.0
+speechrecognition
