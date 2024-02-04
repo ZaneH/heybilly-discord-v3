@@ -6,9 +6,9 @@ import discord
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
 
-BOT_NAME = "Billy 💤"
-BOT_AWAKE_NAME = "Billy 💬"
-BOT_PROCESSING_NAME = "Billy 💡"
+BOT_NAME = "HeyBilly 💤"
+BOT_AWAKE_NAME = "HeyBilly 💬"
+BOT_PROCESSING_NAME = "HeyBilly 💡"
 
 logger = logging.getLogger(__name__)
 
