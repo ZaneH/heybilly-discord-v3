@@ -18,6 +18,7 @@ class TranscriptPublisher:
         self.exchange = self.channel.default_exchange
 
     async def publish_transcript(self, transcript: str):
+        logger.debug(f"Publishing transcript: {transcript}")
         await self.exchange.publish(
             aio_pika.Message(body=transcript.encode()),
             routing_key=self.queue_name

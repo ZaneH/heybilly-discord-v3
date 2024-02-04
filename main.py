@@ -13,6 +13,7 @@ from src.queue.connect import RabbitConnection
 from src.queue.consumer_manager import ConsumerManager
 from src.queue.transcript.publisher import TranscriptPublisher
 from src.utils.commandline import CommandLine
+from src.utils.strings import find_wake_word_start
 
 load_dotenv()
 
@@ -20,14 +21,18 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 
 logger = logging.getLogger(__name__)
+WAKE_WORDS = ["ok billy", "yo billy", "okay billy", "hey billy"]
 
 
 async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue, guild_id: int, bot: discord.Bot):
     transcript_publisher = TranscriptPublisher(rabbit_conn)
     await transcript_publisher.setup_connection()
+
     while True:
         try:
+            logger.debug("Before getting message from queue.")
             response = await transcript_queue.get()
+            logger.debug(f"After getting message from queue. {response}")
 
             if response is None:
                 break
@@ -35,13 +40,22 @@ async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue, guild_id
                 user_id = response["user"]
                 text = response["result"]
 
+                wake_word_start = find_wake_word_start(WAKE_WORDS, text)
+                if wake_word_start == -1:
+                    logger.debug(f"No wake word found in: {text}")
+                    return  # No wake word found
+
+                # Slice the line from the first wake word
+                # it isn't perfect, but it's good enough
+                processed_line = text[wake_word_start:]
+
                 username = bot.get_guild(
                     guild_id).get_member(user_id).global_name
-                logger.info(f"User {username} said: {text}")
+                logger.info(f"User {username} said: {processed_line}")
                 await transcript_publisher.publish_transcript(json.dumps({
-                    "user_id": user_id,
+                    "guild_id": guild_id,
                     "username": username,
-                    "text": text,
+                    "text": processed_line,
                 }))
         except Exception as e:
             logger.error(f"Error processing whisper message: {e}")
@@ -73,6 +87,7 @@ class HeyBillyBot(discord.Bot):
         self.consumer_manager = ConsumerManager(self.rabbit_conn, loop)
 
         for queue_name, args in self.created_queues.items():
+            logger.debug(f"Creating consumer for queue: {queue_name}")
             await self.consumer_manager.create_consumer(queue_name, self.action_queue, args)
 
     async def process_actions(self):
@@ -146,11 +161,12 @@ class HeyBillyBot(discord.Bot):
                 transcript_queue,
                 loop,
                 data_length=50000,
-                quiet_phrase_timeout=1.25,
+                quiet_phrase_timeout=1,
                 mid_sentence_multiplier=1.75,
                 no_data_multiplier=0.75,
                 max_phrase_timeout=20,
-                min_phrase_length=3,
+                min_phrase_length=2,
+                max_speakers=10
             )
 
             self.helper.get_vc().start_recording(

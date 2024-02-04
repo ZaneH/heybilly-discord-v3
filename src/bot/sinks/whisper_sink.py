@@ -126,7 +126,7 @@ Likely disconnected while listening.""")
                 beam_size=10,
                 best_of=3,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=250),
+                vad_parameters=dict(min_silence_duration_ms=150),
                 no_speech_threshold=0.6
             )
 

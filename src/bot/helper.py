@@ -1,4 +1,6 @@
 import asyncio
+from base64 import b64decode
+import io
 import logging
 import discord
 from src.music.ytdl_source import YTDLSource
@@ -115,6 +117,11 @@ class BotHelper:
         if self.tts_queue:
             await self.tts_queue.add_tts(tts_source)
 
+    async def play_data(self, data):
+        b64decoded = b64decode(data)
+        source = discord.FFmpegPCMAudio(io.BytesIO(b64decoded), pipe=True)
+        await self.tts_queue.add_tts(source)
+
     def resume_music(self) -> bool:
         if self.current_music_source and self.bot.vc.is_paused():
             self.bot.vc.resume()
@@ -137,7 +144,14 @@ class BotHelper:
         await self.send_message(discord_channel_id, node["data"]["text"])
 
     async def _handle_tts_node(self, node):
-        await self.play_tts(node["data"]["tts_url"])
+        tts_url = node["data"].get("tts_url", None)
+        tts_data = node["data"].get("tts_data", None)
+        if tts_url:
+            await self.play_tts(node["data"]["tts_url"])
+        elif tts_data:
+            await self.play_data(node["data"]["tts_data"])
+        else:
+            logger.error("No TTS data found in TTS node.")
 
     async def _handle_sfx_node(self, node):
         await self.play_sfx(node["data"]["video_url"])
