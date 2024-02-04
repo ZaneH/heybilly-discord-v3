@@ -31,8 +31,11 @@ class BotHelper:
         self.tts_queue = TTSQueue(voice_client, self.bot)
         self.current_music_source = None
 
-    def get_vc(self) -> discord.VoiceClient | None:
-        return self.bot.vc
+    def get_vc(self, ctx: discord.context.ApplicationContext = None) -> discord.VoiceClient | None:
+        vc_value = self.bot.vc
+        if not vc_value and ctx:
+            vc_value = ctx.guild.voice_client
+        return vc_value
 
     def decrease_volume(self):
         if self.bot.vc:

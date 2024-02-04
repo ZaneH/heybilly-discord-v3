@@ -1,17 +1,17 @@
-import logging
-from queue import Queue
-from tempfile import NamedTemporaryFile
+import asyncio
 import io
+import logging
+import re
 import threading
 import time
-import re
-from typing import List
 import wave
-import asyncio
+from queue import Queue
+from tempfile import NamedTemporaryFile
+from typing import List
 
+import speech_recognition as sr
 from discord.sinks.core import Filters, Sink, default_filters
 from faster_whisper import WhisperModel
-import speech_recognition as sr
 
 audio_model = WhisperModel("medium.en", device="cpu", compute_type="float32")
 
@@ -116,8 +116,6 @@ Likely disconnected while listening.""")
                 f"A sink thread was stopped for guild {self.vc.channel.guild.id}.")
 
     def is_valid_phrase(self, speaker_phrase, result):
-        logger.debug(
-            f"Waiting for final phrase: {speaker_phrase} != {result}")
         return speaker_phrase != result
 
     def transcribe_audio(self, temp_file):
@@ -129,9 +127,9 @@ Likely disconnected while listening.""")
                 best_of=3,
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=250),
-                no_speech_threshold=0.6,
-
+                no_speech_threshold=0.6
             )
+
             segments = list(segments)
             result = ""
             for segment in segments:
