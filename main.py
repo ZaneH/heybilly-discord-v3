@@ -22,16 +22,12 @@ DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 logger = logging.getLogger(__name__)
 
 
-async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue):
+async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue, guild_id: int, bot: discord.Bot):
     transcript_publisher = TranscriptPublisher(rabbit_conn)
-    print("1")
     await transcript_publisher.setup_connection()
-    print("2")
     while True:
         try:
-            print("-")
             response = await transcript_queue.get()
-            print("GOT", response)
 
             if response is None:
                 break
@@ -39,9 +35,12 @@ async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue):
                 user_id = response["user"]
                 text = response["result"]
 
-                logger.info(f"User {user_id} said: {text}")
+                username = bot.get_guild(
+                    guild_id).get_member(user_id).global_name
+                logger.info(f"User {username} said: {text}")
                 await transcript_publisher.publish_transcript(json.dumps({
-                    "user": user_id,
+                    "user_id": user_id,
+                    "username": username,
                     "text": text,
                 }))
         except Exception as e:
@@ -140,7 +139,7 @@ class HeyBillyBot(discord.Bot):
 
             transcript_queue = asyncio.Queue()
             t = loop.create_task(whisper_message(
-                self.rabbit_conn, transcript_queue))
+                self.rabbit_conn, transcript_queue, ctx.guild_id, self))
             self.guild_whisper_message_tasks[ctx.guild_id] = t
 
             whisper_sink = WhisperSink(
