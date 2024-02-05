@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import io
 import logging
 import re
@@ -91,6 +92,7 @@ class WhisperSink(Sink):
         self.speakers: List[Speaker] = []
         self.temp_file = NamedTemporaryFile().name
         self.voice_queue = Queue()
+        self.executor = ThreadPoolExecutor(max_workers=4)  # TODO: Adjust this
 
     def start_voice_thread(self):
         def thread_exception_hook(args):
@@ -126,7 +128,10 @@ Likely disconnected while listening.""")
                 beam_size=10,
                 best_of=3,
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=150),
+                vad_parameters=dict(
+                    min_silence_duration_ms=150,
+                    threshold=0.8
+                ),
                 no_speech_threshold=0.6
             )
 
@@ -159,17 +164,8 @@ Likely disconnected while listening.""")
             wave_writer.close()
 
         transcription = self.transcribe_audio(self.temp_file)
-        if self.is_valid_phrase(speaker.phrase, transcription):
-            speaker.empty_bytes_counter = 0
-            speaker.word_timeout = self.quiet_phrase_timeout
-            if re.search(r"\s*\.{2,}$", transcription) or not re.search(r"[.!?]$", transcription):
-                speaker.word_timeout *= self.mid_sentence_multiplier
-            speaker.phrase = transcription
-            speaker.last_word = time.time()
-        elif speaker.empty_bytes_counter > 5:
-            speaker.data = speaker.data[:-speaker.new_bytes]
-        else:
-            speaker.empty_bytes_counter += 1
+
+        return transcription, speaker.new_bytes
 
     def insert_voice(self):
         while self.running:
@@ -188,37 +184,69 @@ Likely disconnected while listening.""")
                         self.speakers.append(Speaker(item[0], item[1]))
 
                 # Transcribe audio for each speaker
+                future_to_speaker = {}
                 for speaker in self.speakers:
                     if speaker.new_bytes > 0:
-                        self.transcribe(speaker)
                         speaker.new_bytes = 0
-                        word_timeout = speaker.word_timeout
+
+                        future = self.executor.submit(self.transcribe, speaker)
+                        future_to_speaker[future] = speaker
                     else:
                         # No data coming in from discord, reduces word_timeout for faster inference
-                        word_timeout = speaker.word_timeout * self.no_data_multiplier
+                        speaker.word_timeout = round(
+                            speaker.word_timeout * self.no_data_multiplier, 2)
 
-                    current_time = time.time()
+                for future in future_to_speaker:
+                    speaker = future_to_speaker[future]
+                    try:
+                        transcription, speaker_new_bytes = future.result()
+                        current_time = time.time()
 
-                    if len(speaker.phrase) >= self.min_phrase_length:
-                        # If the user stops saying anything new or has been speaking too long.
-                        logger.debug(
-                            f"[time, word timeout]: [{time.time()}, {word_timeout}]")
-                        if (
-                            current_time - speaker.last_word > word_timeout
-                            or current_time - speaker.last_phrase > self.max_phrase_timeout
-                        ):
-                            self.loop.call_soon_threadsafe(self.queue.put_nowait, {
-                                                           "user": speaker.user, "result": speaker.phrase})
+                        self.update_speaker_status(
+                            speaker, transcription, current_time, speaker_new_bytes)
+                    except Exception as e:
+                        logger.warn(f"Error in insert_voice future: {e}")
 
-                            self.speakers.remove(speaker)
-                    elif current_time > self.quiet_phrase_timeout * 2:
-                        # Reset Remove the speaker if no valid phrase detected after set period of time
-                        self.speakers.remove(speaker)
+                self.check_speaker_timeouts()
 
                 # Loops with no wait time is bad
-                time.sleep(0.45)
+                time.sleep(0.35)
             except Exception as e:
                 logger.error(f"Error in insert_voice: {e}")
+
+    def check_speaker_timeouts(self):
+        current_time = time.time()
+        # Copy the list to avoid modification during iteration
+        for speaker in self.speakers[:]:
+            word_timeout = speaker.word_timeout
+            if len(speaker.phrase) >= self.min_phrase_length:
+                # If the user stops saying anything new or has been speaking too long.
+                logger.debug(
+                    f"[time, word timeout]: [{current_time}, {word_timeout}]")
+                if (
+                    current_time - speaker.last_word > word_timeout
+                    or current_time - speaker.last_phrase > self.max_phrase_timeout
+                ):
+                    self.loop.call_soon_threadsafe(self.queue.put_nowait, {
+                        "user": speaker.user, "result": speaker.phrase})
+                    self.speakers.remove(speaker)
+            elif current_time - speaker.last_phrase > self.quiet_phrase_timeout * 2:
+                # Remove the speaker if no valid phrase detected after set period of time
+                self.speakers.remove(speaker)
+
+    def update_speaker_status(self, speaker, transcription, current_time, speaker_new_bytes):
+        if self.is_valid_phrase(speaker.phrase, transcription):
+            speaker.empty_bytes_counter = 0
+            speaker.word_timeout = self.quiet_phrase_timeout
+            if re.search(r"\s*\.{2,}$", transcription) or not re.search(r"[.!?]$", transcription):
+                speaker.word_timeout *= self.mid_sentence_multiplier
+                speaker.word_timeout = round(speaker.word_timeout, 3)
+            speaker.phrase = transcription
+            speaker.last_word = current_time
+        elif speaker.empty_bytes_counter > 5:
+            speaker.data = speaker.data[:-speaker_new_bytes]
+        else:
+            speaker.empty_bytes_counter += 1
 
     @Filters.container
     def write(self, data, user):
