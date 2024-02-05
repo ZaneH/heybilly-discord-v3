@@ -116,9 +116,6 @@ Likely disconnected while listening.""")
             logger.debug(
                 f"A sink thread was stopped for guild {self.vc.channel.guild.id}.")
 
-    def is_valid_phrase(self, speaker_phrase, result):
-        return speaker_phrase != result
-
     def transcribe_audio(self, temp_file):
         try:
             # The whisper model
@@ -235,12 +232,13 @@ Likely disconnected while listening.""")
                 self.speakers.remove(speaker)
 
     def update_speaker_status(self, speaker, transcription, current_time, speaker_new_bytes):
-        if self.is_valid_phrase(speaker.phrase, transcription):
+        # If the transcription is different from the last one, reset the word timeout
+        if speaker.phrase != transcription:
             speaker.empty_bytes_counter = 0
             speaker.word_timeout = self.quiet_phrase_timeout
             if re.search(r"\s*\.{2,}$", transcription) or not re.search(r"[.!?]$", transcription):
-                speaker.word_timeout *= self.mid_sentence_multiplier
-                speaker.word_timeout = round(speaker.word_timeout, 3)
+                speaker.word_timeout = round(
+                    speaker.word_timeout * self.mid_sentence_multiplier, 3)
             speaker.phrase = transcription
             speaker.last_word = current_time
         elif speaker.empty_bytes_counter > 5:
