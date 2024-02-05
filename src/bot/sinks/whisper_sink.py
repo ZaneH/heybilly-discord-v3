@@ -90,7 +90,6 @@ class WhisperSink(Sink):
         self.audio_data = {}
         self.running = True
         self.speakers: List[Speaker] = []
-        self.temp_file = NamedTemporaryFile().name
         self.voice_queue = Queue()
         self.executor = ThreadPoolExecutor(max_workers=4)  # TODO: Adjust this
 
@@ -154,16 +153,17 @@ Likely disconnected while listening.""")
 
         wav_data = io.BytesIO(audio_data.get_wav_data())
 
-        with open(self.temp_file, "wb") as file:
-            wave_writer = wave.open(file, "wb")
+        wav_io = io.BytesIO()
+        with wave.open(wav_io, "wb") as wave_writer:
             wave_writer.setnchannels(self.vc.decoder.CHANNELS)
             wave_writer.setsampwidth(
                 self.vc.decoder.SAMPLE_SIZE // self.vc.decoder.CHANNELS)
             wave_writer.setframerate(self.vc.decoder.SAMPLING_RATE)
             wave_writer.writeframes(wav_data.getvalue())
-            wave_writer.close()
 
-        transcription = self.transcribe_audio(self.temp_file)
+        wav_io.seek(0)
+
+        transcription = self.transcribe_audio(wav_io)
 
         return transcription, speaker.new_bytes
 
