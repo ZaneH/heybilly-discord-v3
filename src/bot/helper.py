@@ -62,6 +62,13 @@ class BotHelper:
         else:
             logger.error(f"Channel with ID {channel_id} not found.")
 
+    async def send_welcome_message(self, guild: discord.Guild):
+        await guild.system_channel.send(embed=discord.Embed(
+            title="HeyBilly",
+            description=f"Thanks for inviting me to {guild.name}! I can connect to your voice channel and listen for commands. Use `/help` to see what I can do.\n\nDue to server costs, I am only available for 20 minutes without a subscription. If you would like to support me, please consider subscribing at [heybilly.zaaane.com](https://heybilly.zaaane.com).",
+            color=discord.Color.blue()
+        ))
+
     def music_stopped_callback(self, error):
         if error:
             logger.error(f'YTDL Player error: {error}')

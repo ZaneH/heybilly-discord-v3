@@ -129,7 +129,7 @@ Likely disconnected while listening.""")
                     threshold=0.8
                 ),
                 no_speech_threshold=0.6,
-                initial_prompt="Hey Billy, Okay Billy, and Yo Billy are all wake words for a smart assistant. You're job is to transcribe their resquest as a full sentence.",
+                initial_prompt="Hey Billy, Okay Billy, and Yo Billy are all wake words for a smart assistant. You're job is to transcribe their resquest as a full sentence. Keywords: GIFs, videos, music, YouTube, Yeat, Discord, play, volume, resume, pause, stop.",
             )
 
             segments = list(segments)

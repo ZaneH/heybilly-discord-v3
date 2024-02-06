@@ -134,6 +134,31 @@ if __name__ == "__main__":
             await ctx.respond(f"Could not play {url}.", ephemeral=True)
             logger.error(f"Error playing {url}: {e}")
 
+    @bot.slash_command(name="help", description="Show the help message.")
+    async def help(ctx: discord.context.ApplicationContext):
+        embed_fields = [
+            discord.EmbedField(
+                name="/connect", value="Connect to your voice channel.", inline=True),
+            discord.EmbedField(
+                name="Hey Billy, tell me a long story about a cat with my name.", value="Billy can come up with fun stories for you."),
+            discord.EmbedField(
+                name="Hey Billy, how's the weather in Tokyo?", value="Billy can fetch real-time data."),
+            discord.EmbedField(
+                name="Okay Billy, post a good morning GIF.", value="Billy can post all kinds of GIFs."),
+            discord.EmbedField(
+                name="Yo Billy, post Blank Space by Taylor Swift.", value="Billy can post *and* play music for you.\nOptional: Use the `/play` command for your own URLs."),
+            discord.EmbedField(
+                name="Yo Billy, play cricket sound effects.", value="Billy can play sound effects without interrupting the music."
+            )
+        ]
+
+        embed = discord.Embed(title="HeyBilly Help",
+                              description="""HeyBilly is Discord's most advanced voice assistant. Say "Hey Billy, play some smooth jazz" and he will play some smooth jazz. He can post news stories, play sound effects, and much more! Here are some commands to get you started.""",
+                              color=discord.Color.blue(),
+                              fields=embed_fields)
+
+        await ctx.respond(embed=embed, ephemeral=True)
+
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))
     except KeyboardInterrupt:

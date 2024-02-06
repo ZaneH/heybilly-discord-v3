@@ -108,6 +108,13 @@ class HeyBillyBot(discord.Bot):
         self.loop.create_task(self.process_actions())
         self._is_ready = True
 
+    async def on_guild_join(self, guild: discord.Guild):
+        try:
+            logger.info(f"Joined guild {guild.name}.")
+            await self.helper.send_welcome_message(guild)
+        except Exception as e:
+            logger.error(f"Error welcoming guild: {e}")
+
     async def start_consumers(self):
         self.rabbit_conn = await RabbitConnection.connect("localhost", self.loop)
         self.consumer_manager = ConsumerManager(self.rabbit_conn, self.loop)
