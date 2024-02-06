@@ -125,6 +125,15 @@ if __name__ == "__main__":
         bot.helper.set_volume(value)
         await ctx.respond(f"Volume set to {value}.", ephemeral=True)
 
+    @bot.slash_command(name="play", description="Play a song (Supports YouTube and other audio URLs).")
+    async def play(ctx: discord.context.ApplicationContext, url: str):
+        try:
+            await bot.helper.play_youtube(url)
+            await ctx.respond(f"Playing {url}.", ephemeral=True)
+        except Exception as e:
+            await ctx.respond(f"Could not play {url}.", ephemeral=True)
+            logger.error(f"Error playing {url}: {e}")
+
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))
     except KeyboardInterrupt:

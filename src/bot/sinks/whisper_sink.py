@@ -128,7 +128,8 @@ Likely disconnected while listening.""")
                     min_silence_duration_ms=150,
                     threshold=0.8
                 ),
-                no_speech_threshold=0.6
+                no_speech_threshold=0.6,
+                initial_prompt="Hey Billy, Okay Billy, and Yo Billy are all wake words for a smart assistant. You're job is to transcribe their resquest as a full sentence.",
             )
 
             segments = list(segments)
@@ -162,7 +163,7 @@ Likely disconnected while listening.""")
 
         transcription = self.transcribe_audio(wav_io)
 
-        return transcription, speaker.new_bytes
+        return transcription
 
     def insert_voice(self):
         while self.running:
@@ -196,8 +197,9 @@ Likely disconnected while listening.""")
                 for future in future_to_speaker:
                     speaker = future_to_speaker[future]
                     try:
-                        transcription, speaker_new_bytes = future.result()
+                        transcription = future.result()
                         current_time = time.time()
+                        speaker_new_bytes = speaker.new_bytes
 
                         self.update_speaker_status(
                             speaker, transcription, current_time, speaker_new_bytes)
@@ -207,7 +209,7 @@ Likely disconnected while listening.""")
                 self.check_speaker_timeouts()
 
                 # Loops with no wait time is bad
-                time.sleep(0.35)
+                time.sleep(0.1)
             except Exception as e:
                 logger.error(f"Error in insert_voice: {e}")
 
@@ -250,7 +252,7 @@ Likely disconnected while listening.""")
     def write(self, data, user):
         """Gets audio data from discord for each user talking"""
         # Discord will send empty bytes from when the user stopped talking to when the user starts to talk again.
-        # Its only the first the first data that grows massive and its only silent audio, so its trimmed.
+        # Its only the first data that grows massive and its only silent audio, so its trimmed.
 
         data_len = len(data)
         if data_len > self.data_length:

@@ -155,9 +155,9 @@ class HeyBillyBot(discord.Bot):
                 transcript_queue,
                 self.loop,
                 data_length=50000,
-                quiet_phrase_timeout=0.1,
-                mid_sentence_multiplier=0.1,
-                no_data_multiplier=0.05,
+                quiet_phrase_timeout=0.5,
+                mid_sentence_multiplier=1.2,
+                no_data_multiplier=0.15,
                 max_phrase_timeout=15,
                 min_phrase_length=7,
                 max_speakers=10
