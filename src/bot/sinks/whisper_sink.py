@@ -93,7 +93,7 @@ class WhisperSink(Sink):
         self.voice_queue = Queue()
         self.executor = ThreadPoolExecutor(max_workers=4)  # TODO: Adjust this
 
-    def start_voice_thread(self):
+    def start_voice_thread(self, on_exception=None):
         def thread_exception_hook(args):
             logger.debug(
                 f"""Exception in voice thread: {args}
@@ -103,7 +103,12 @@ Likely disconnected while listening.""")
             f"Starting whisper sink thread for guild {self.vc.channel.guild.id}.")
         self.voice_thread = threading.Thread(
             target=self.insert_voice, args=(), daemon=True)
-        threading.excepthook = thread_exception_hook
+
+        if on_exception:
+            threading.excepthook = on_exception
+        else:
+            threading.excepthook = thread_exception_hook
+
         self.voice_thread.start()
 
     def stop_voice_thread(self):

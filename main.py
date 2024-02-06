@@ -1,11 +1,11 @@
 import asyncio
-import json
 import logging
 import os
 
 import discord
 from dotenv import load_dotenv
 
+from src.bot.helper import BotHelper
 from src.config.cliargs import CLIArgs
 from src.utils.commandline import CommandLine
 
@@ -55,11 +55,15 @@ if __name__ == "__main__":
     @bot.event
     async def on_voice_state_update(member, before, after):
         if member.id == bot.user.id:
+            # If the bot left the "before" channel
             if after.channel is None:
-                bot.helper.guild_id = None
-                bot.helper.set_vc(None)
+                guild_id = before.channel.guild.id
+                helper = bot.guild_to_helper.get(guild_id, None)
+                if helper:
+                    helper.set_vc(None)
+                    bot.guild_to_helper.pop(guild_id, None)
 
-                bot._close_and_clean_sink_for_guild(before.channel.guild.id)
+                bot._close_and_clean_sink_for_guild(guild_id)
 
     @bot.slash_command(name="connect", description="Connect to your voice channel.")
     async def connect(ctx: discord.context.ApplicationContext):
@@ -74,9 +78,12 @@ if __name__ == "__main__":
 
         await ctx.trigger_typing()
         try:
+            guild_id = ctx.guild_id
             vc = await author_vc.channel.connect()
-            bot.helper.guild_id = ctx.guild_id
-            bot.helper.set_vc(vc)
+            helper = bot.guild_to_helper.get(guild_id, BotHelper(bot))
+            helper.guild_id = guild_id
+            helper.set_vc(vc)
+            bot.guild_to_helper[guild_id] = helper
             await ctx.respond(f"Connected to {author_vc.channel.name}.", ephemeral=True)
         except Exception as e:
             await ctx.respond(f"{e}", ephemeral=True)
@@ -85,50 +92,59 @@ if __name__ == "__main__":
 
     @bot.slash_command(name="disconnect", description="Disconnect from your voice channel.")
     async def disconnect(ctx: discord.context.ApplicationContext):
-        bot_vc = bot.helper.get_vc(ctx)
+        guild_id = ctx.guild_id
+        helper = bot.guild_to_helper[guild_id]
+        bot_vc = helper.vc
         if not bot_vc:
             await ctx.respond("I am not in your voice channel.", ephemeral=True)
             return
 
         await ctx.trigger_typing()
-        if bot.guild_is_recording.get(ctx.guild_id, False):
+        if bot.guild_is_recording.get(guild_id, False):
             bot.stop_recording(ctx)
 
         await bot_vc.disconnect()
-        bot.helper.guild_id = None
-        bot.helper.set_vc(None)
+        helper.guild_id = None
+        helper.set_vc(None)
+        bot.guild_to_helper.pop(guild_id, None)
+
         await ctx.respond("Disconnected from VC.", ephemeral=True)
 
     @bot.slash_command(name="resume", description="Resume music playback.")
     async def resume(ctx: discord.context.ApplicationContext):
-        if bot.helper.resume_music():
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        if helper and helper.resume_music():
             await ctx.respond("Resuming music.", ephemeral=True)
         else:
             await ctx.respond("No music to resume.", ephemeral=True)
 
     @bot.slash_command(name="pause", description="Pause music playback.")
     async def pause(ctx: discord.context.ApplicationContext):
-        if bot.helper.pause_music():
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        if helper and helper.pause_music():
             await ctx.respond("Pausing music.", ephemeral=True)
         else:
             await ctx.respond("No music is playing.", ephemeral=True)
 
     @bot.slash_command(name="stop", description="Stop music playback.")
     async def stop(ctx: discord.context.ApplicationContext):
-        if bot.helper.stop_music():
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        if helper and helper.stop_music():
             await ctx.respond("Stopping music.", ephemeral=True)
         else:
             await ctx.respond("No music is playing.", ephemeral=True)
 
     @bot.slash_command(name="volume", description="Set the volume.")
     async def volume(ctx: discord.context.ApplicationContext, value: int):
-        bot.helper.set_volume(value)
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        helper.set_volume(value)
         await ctx.respond(f"Volume set to {value}.", ephemeral=True)
 
     @bot.slash_command(name="play", description="Play a song (Supports YouTube and other audio URLs).")
     async def play(ctx: discord.context.ApplicationContext, url: str):
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
         try:
-            await bot.helper.play_youtube(url)
+            await helper.play_youtube(url)
             await ctx.respond(f"Playing {url}.", ephemeral=True)
         except Exception as e:
             await ctx.respond(f"Could not play {url}.", ephemeral=True)
@@ -142,9 +158,9 @@ if __name__ == "__main__":
             discord.EmbedField(
                 name="Hey Billy, tell me a long story about a cat with my name.", value="Billy can come up with fun stories for you."),
             discord.EmbedField(
-                name="Hey Billy, how's the weather in Tokyo?", value="Billy can fetch real-time data."),
+                name="Hey Billy, how's the weather in Tokyo?", value="Billy can fetch real-time data.\nAsk Billy about sports, stocks, currency conversions and more!"),
             discord.EmbedField(
-                name="Okay Billy, post a good morning GIF.", value="Billy can post all kinds of GIFs."),
+                name="Okay Billy, post a good morning GIF.", value="Billy can post all kinds of GIFs.\nYou can also ask him to post images and videos."),
             discord.EmbedField(
                 name="Yo Billy, post Blank Space by Taylor Swift.", value="Billy can post *and* play music for you.\nOptional: Use the `/play` command for your own URLs."),
             discord.EmbedField(

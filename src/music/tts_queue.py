@@ -5,9 +5,9 @@ logger = logging.getLogger(__name__)
 
 
 class TTSQueue:
-    def __init__(self, voice_client, bot):
+    def __init__(self, voice_client, helper):
         self.voice_client = voice_client
-        self.bot = bot
+        self.helper = helper
         self.tts_sources = asyncio.Queue()
         self.is_playing_tts = False
         self.paused_music_source = None
@@ -22,10 +22,10 @@ class TTSQueue:
             return
 
         self.is_playing_tts = True
-        if self.voice_client.is_playing() and self.bot.helper.current_music_source:
+        if self.voice_client.is_playing() and self.helper.current_music_source:
             # Pause the music and store the current music source
             self.voice_client.pause()
-            self.paused_music_source = self.voice_client.source if self.bot.helper.current_music_source else None
+            self.paused_music_source = self.voice_client.source if self.helper.current_music_source else None
 
         while not self.tts_sources.empty():
             tts_source = await self.tts_sources.get()
@@ -36,7 +36,7 @@ class TTSQueue:
         if self.paused_music_source:
             # Resume the paused music source
             self.voice_client.play(
-                self.paused_music_source, after=self.bot.helper.music_stopped_callback)
+                self.paused_music_source, after=self.helper.music_stopped_callback)
             self.paused_music_source = None
 
     async def wait_for_source_to_finish(self):

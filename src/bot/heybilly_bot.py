@@ -4,8 +4,8 @@ import logging
 import os
 
 import discord
-
 from src.bot.helper import BotHelper
+
 from src.bot.sinks.whisper_sink import WhisperSink
 from src.queue.connect import RabbitConnection
 from src.queue.consumer_manager import ConsumerManager
@@ -56,8 +56,9 @@ async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue, guild_id
 
 class HeyBillyBot(discord.Bot):
     def __init__(self, loop):
-        super().__init__(command_prefix="!", loop=loop)
-        self.helper = None
+        super().__init__(command_prefix="!", loop=loop,
+                         activity=discord.CustomActivity(name='Listening for "Hey Billy"'))
+        self.guild_to_helper = {}
         self.action_queue = asyncio.Queue()
         self.guild_is_recording = {}
         self.guild_whisper_sinks = {}
@@ -80,38 +81,53 @@ class HeyBillyBot(discord.Bot):
             try:
                 action = await self.action_queue.get()
                 node_type = action.get("node_type", None)
+                guild_id = action.get("guild_id", None)
                 logger.debug(f"Processing action: {action}")
 
+                helper = self.guild_to_helper.get(guild_id, None)
+                if helper is None:
+                    logger.error(
+                        f"Helper not found for guild {guild_id}. Skipping action.")
+                    continue
+
                 if node_type == "discord.post":
-                    await self.helper._handle_post_node(action, DISCORD_CHANNEL_ID)
+                    await helper._handle_post_node(action, DISCORD_CHANNEL_ID)
                 elif node_type == "output.tts":
-                    await self.helper._handle_tts_node(action)
+                    await helper._handle_tts_node(action)
                 elif node_type == "volume.set":
-                    self.helper._handle_volume_node(action)
+                    helper._handle_volume_node(action)
                 elif node_type == "sfx.play":
-                    await self.helper._handle_sfx_node(action)
+                    await helper._handle_sfx_node(action)
                 elif node_type == "music.control":
-                    await self.helper._handle_music_control_node(action)
+                    await helper._handle_music_control_node(action)
                 elif action.get("status", None):
-                    await self.helper._handle_request_status_update(action)
+                    await helper._handle_request_status_update(action)
                 else:
                     logger.error(f"Unknown action: {action}")
             except Exception as e:
                 logger.error(f"Error processing action: {e}")
                 logger.error(f"Action: {action}")
 
+            await asyncio.sleep(0.15)
+
     async def on_ready(self):
         logger.info(f"Logged in as {self.user}.")
         await self.start_consumers()
-        self.helper = BotHelper(self)
 
         self.loop.create_task(self.process_actions())
         self._is_ready = True
 
+    async def send_welcome_message(self, guild: discord.Guild):
+        await guild.system_channel.send(embed=discord.Embed(
+            title="HeyBilly",
+            description=f"Thanks for inviting me to {guild.name}! I can connect to your voice channel and listen for commands. Use `/help` to see what I can do.\n\nDue to server costs, I am limited to 10 requests per day per server without a subscription. If you would like to support me, please consider subscribing at [heybilly.xyz](https://www.heybilly.xyz).",
+            color=discord.Color.blue()
+        ))
+
     async def on_guild_join(self, guild: discord.Guild):
         try:
             logger.info(f"Joined guild {guild.name}.")
-            await self.helper.send_welcome_message(guild)
+            await self.send_welcome_message(guild)
         except Exception as e:
             logger.error(f"Error welcoming guild: {e}")
 
@@ -170,9 +186,16 @@ class HeyBillyBot(discord.Bot):
                 max_speakers=10
             )
 
-            self.helper.get_vc().start_recording(
+            self.guild_to_helper[ctx.guild_id].vc.start_recording(
                 whisper_sink, on_stop_record_callback, ctx)
-            whisper_sink.start_voice_thread()
+
+            def on_thread_exception(e):
+                logger.warning(
+                    f"Whisper sink thread exception for guild {ctx.guild_id}. Restarting...\n{e}")
+                self._close_and_clean_sink_for_guild(ctx.guild_id)
+                self.start_recording(ctx)
+
+            whisper_sink.start_voice_thread(on_exception=on_thread_exception)
 
             self.guild_is_recording[ctx.guild_id] = True
             self.guild_whisper_sinks[ctx.guild_id] = whisper_sink

@@ -23,37 +23,36 @@ class BotHelper:
         self.current_sfx_source = None
         self.user_music_volume = 0.5
 
+        self.vc = None
+
     def set_vc(self, voice_client):
+        self.vc = voice_client
         if voice_client is None:
-            self.bot.vc = None
-            self.bot.source_queue = None
+            self.tts_queue = None
+            self.current_music_source = None
+            self.current_sfx_source = None
+            logger.debug(
+                "Voice client set to None. Clearing tts queue and current music source.")
             return
 
-        self.bot.vc = voice_client
-        self.tts_queue = TTSQueue(voice_client, self.bot)
+        self.tts_queue = TTSQueue(voice_client, self)
         self.current_music_source = None
 
-    def get_vc(self, ctx: discord.context.ApplicationContext = None) -> discord.VoiceClient | None:
-        vc_value = self.bot.vc
-        if not vc_value and ctx:
-            vc_value = ctx.guild.voice_client
-        return vc_value
-
     def decrease_volume(self):
-        if self.bot.vc:
-            self.bot.vc.source.volume -= 0.2
+        if self.vc:
+            self.vc.source.volume -= 0.2
 
     def increase_volume(self):
-        if self.bot.vc:
-            self.bot.vc.source.volume += 0.2
+        if self.vc:
+            self.vc.source.volume += 0.2
 
     def set_volume(self, value):
         value = max(0, min(10, value))
         value = value / 10
         self.user_music_volume = value
 
-        if self.bot.vc:
-            self.bot.vc.source.volume = value
+        if self.vc:
+            self.vc.source.volume = value
 
     async def send_message(self, channel_id, content, embed=None, tts=False):
         channel = self.bot.get_channel(channel_id)
@@ -61,13 +60,6 @@ class BotHelper:
             await channel.send(content=content, embed=embed, tts=tts)
         else:
             logger.error(f"Channel with ID {channel_id} not found.")
-
-    async def send_welcome_message(self, guild: discord.Guild):
-        await guild.system_channel.send(embed=discord.Embed(
-            title="HeyBilly",
-            description=f"Thanks for inviting me to {guild.name}! I can connect to your voice channel and listen for commands. Use `/help` to see what I can do.\n\nDue to server costs, I am only available for 20 minutes without a subscription. If you would like to support me, please consider subscribing at [heybilly.zaaane.com](https://heybilly.zaaane.com).",
-            color=discord.Color.blue()
-        ))
 
     def music_stopped_callback(self, error):
         if error:
@@ -77,24 +69,24 @@ class BotHelper:
 
     async def play_youtube(self, video_url):
         if self.current_music_source:
-            self.bot.vc.stop()
+            self.vc.stop()
 
         self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
-        self.bot.vc.play(self.current_music_source,
-                         after=self.music_stopped_callback)
-        self.bot.vc.source.volume = self.user_music_volume
+        self.vc.play(self.current_music_source,
+                     after=self.music_stopped_callback)
+        self.vc.source.volume = self.user_music_volume
 
     async def play_sfx(self, sfx_url, sfx_duration=5):
-        old_source = self.bot.vc.source if self.bot.vc.is_playing() else None
+        old_source = self.vc.source if self.vc.is_playing() else None
 
-        if self.bot.vc.is_playing():
-            self.bot.vc.pause()
+        if self.vc.is_playing():
+            self.vc.pause()
 
         async def stop_playback_after_timeout(duration):
             await asyncio.sleep(duration)
             if self.current_sfx_source:
-                if self.bot.vc.is_playing():
-                    self.bot.vc.stop()
+                if self.vc.is_playing():
+                    self.vc.stop()
 
         if sfx_duration > 0:
             timeout_task = asyncio.create_task(
@@ -102,9 +94,9 @@ class BotHelper:
 
         # Load and play the SFX
         self.current_sfx_source = await YTDLSource.from_url(sfx_url, loop=self.bot.loop, stream=True)
-        self.bot.vc.play(self.current_sfx_source,
-                         after=lambda e: sfx_stopped_callback(e, old_source, timeout_task))
-        self.bot.vc.source.volume = self.user_music_volume
+        self.vc.play(self.current_sfx_source,
+                     after=lambda e: sfx_stopped_callback(e, old_source, timeout_task))
+        self.vc.source.volume = self.user_music_volume
 
         def sfx_stopped_callback(error, old_source, timeout_task=None):
             if error:
@@ -115,9 +107,9 @@ class BotHelper:
 
                 self.current_sfx_source = None
                 if old_source:
-                    self.bot.vc.play(
+                    self.vc.play(
                         old_source, after=self.music_stopped_callback)
-                    self.bot.vc.source.volume = self.user_music_volume
+                    self.vc.source.volume = self.user_music_volume
 
     async def play_tts(self, tts_url):
         tts_source = await YTDLSource.from_url(tts_url, loop=self.bot.loop, stream=True)
@@ -125,25 +117,26 @@ class BotHelper:
             await self.tts_queue.add_tts(tts_source)
 
     async def play_data(self, data):
-        b64decoded = b64decode(data)
-        source = discord.FFmpegPCMAudio(io.BytesIO(b64decoded), pipe=True)
-        await self.tts_queue.add_tts(source)
+        if self.tts_queue:
+            b64decoded = b64decode(data)
+            source = discord.FFmpegPCMAudio(io.BytesIO(b64decoded), pipe=True)
+            await self.tts_queue.add_tts(source)
 
     def resume_music(self) -> bool:
-        if self.current_music_source and self.bot.vc.is_paused():
-            self.bot.vc.resume()
+        if self.current_music_source and self.vc.is_paused():
+            self.vc.resume()
             return True
         return False
 
     def pause_music(self) -> bool:
-        if self.current_music_source and self.bot.vc.is_playing():
-            self.bot.vc.pause()
+        if self.current_music_source and self.vc.is_playing():
+            self.vc.pause()
             return True
         return False
 
     def stop_music(self) -> bool:
-        if self.current_music_source and self.bot.vc.is_playing():
-            self.bot.vc.stop()
+        if self.current_music_source and self.vc.is_playing():
+            self.vc.stop()
             return True
         return False
 
@@ -182,19 +175,19 @@ class BotHelper:
         action = action.lower()
 
         if action == "start":
-            if self.bot.vc.is_playing() or self.bot.vc.is_paused():
-                self.bot.vc.stop()
+            if self.vc.is_playing() or self.vc.is_paused():
+                self.vc.stop()
 
             await self.play_youtube(node["data"]["video_url"])
         elif action == "stop":
-            if self.bot.vc.is_playing():
-                self.bot.vc.stop()
+            if self.vc.is_playing():
+                self.vc.stop()
         elif action == "pause":
-            if self.bot.vc.is_playing():
-                self.bot.vc.pause()
+            if self.vc.is_playing():
+                self.vc.pause()
         elif action == "resume":
-            if self.bot.vc.is_paused():
-                self.bot.vc.resume()
+            if self.vc.is_paused():
+                self.vc.resume()
         else:
             logger.error(f"Unknown music control action: {action}")
 
