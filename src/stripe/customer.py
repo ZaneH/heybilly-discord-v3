@@ -6,11 +6,8 @@ stripe.api_key = os.getenv("STRIPE_API_KEY")
 
 
 class StripeCustomer:
-    def __init__(self):
-        self.stripe_customer_id = None
-        self.supabase = supabase
-
-    def get_profile_id_for_guild_id(self, guild_id: int):
+    @staticmethod
+    def get_profile_id_for_guild_id(guild_id: int):
         response = supabase.table("guild_settings")\
             .select("profile_id")\
             .eq("guild_id", str(guild_id))\
@@ -24,8 +21,9 @@ class StripeCustomer:
             # Handle the case where the guild ID is not found or does not have an associated profile
             return None
 
-    def get_customer_id_for_guild_id(self, guild_id: str):
-        profile_id = self.get_profile_id_for_guild_id(guild_id)
+    @staticmethod
+    def get_customer_id_for_guild_id(guild_id: str):
+        profile_id = StripeCustomer.get_profile_id_for_guild_id(guild_id)
         if not profile_id:
             return None
 
@@ -41,8 +39,9 @@ class StripeCustomer:
         else:
             return None
 
-    def has_active_plan(self, guild_id: str):
-        customer_id = self.get_customer_id_for_guild_id(guild_id)
+    @staticmethod
+    def has_active_plan(guild_id: str):
+        customer_id = StripeCustomer.get_customer_id_for_guild_id(guild_id)
         if not customer_id:
             return False
 

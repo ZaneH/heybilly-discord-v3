@@ -3,7 +3,7 @@ git+https://github.com/Pycord-Development/pycord
 yt-dlp
 aio-pika
 python-dotenv
-stripe
+stripe>=8.1.0
 
 # Supabase
 supabase

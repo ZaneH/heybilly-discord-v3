@@ -14,7 +14,7 @@ load_dotenv()
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()  # root logger
 
 
 def configure_logging():
@@ -23,12 +23,17 @@ def configure_logging():
     logging.getLogger('aio_pika').setLevel(logging.WARNING)
     logging.getLogger('asyncio').setLevel(logging.WARNING)
     logging.getLogger('faster_whisper').setLevel(logging.WARNING)
+    logging.getLogger('stripe').setLevel(logging.WARNING)
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
 
     if CLIArgs.verbose:
+        logger.setLevel(logging.DEBUG)
         logging.basicConfig(level=logging.DEBUG,
                             format='%(name)s: %(message)s')
 
     else:
+        logger.setLevel(logging.INFO)
         logging.basicConfig(level=logging.INFO,
                             format='%(name)s: %(message)s')
 
@@ -198,13 +203,17 @@ if __name__ == "__main__":
     async def voice_set(ctx: discord.context.ApplicationContext, voice: discord.Option(str, choices=[
         discord.OptionChoice(name=name, value=voice) for voice, name in TTS_VOICE_MAP.items()
     ])):
-        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        try:
+            helper = bot.guild_to_helper.get(ctx.guild_id, None)
 
-        if helper:
-            helper.set_voice(voice)
-            await ctx.respond(f"Voice set to {get_voice_name(voice)}.", ephemeral=True)
-        else:
-            await ctx.respond("HeyBilly must be in a voice channel first.", ephemeral=True)
+            if helper:
+                helper.set_voice(voice)
+                await ctx.respond(f"Voice set to {get_voice_name(voice)}.", ephemeral=True)
+            else:
+                await ctx.respond("HeyBilly must be in a voice channel first.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error setting voice: {e}")
+            await ctx.respond(f"Error setting voice. Try again later.", ephemeral=True)
 
     @bot.slash_command(name="playing", description="Show what's currently playing.")
     async def playing(ctx: discord.context.ApplicationContext):

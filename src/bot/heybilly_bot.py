@@ -141,56 +141,61 @@ class HeyBillyBot(discord.Bot):
         subscription checks and limits.
         """
         try:
-            sc = StripeCustomer()
-            has_plan = sc.has_active_plan(ctx.guild_id)
+            logger.debug(f"Checking if guild {ctx.guild_id} is activated.")
+            has_plan = StripeCustomer.has_active_plan(ctx.guild_id)
             if not has_plan:
                 logger.warning(
                     f"No active plan for guild {ctx.guild_id}. Not starting whisper sink.")
                 return
 
-            guild_voice_sink = self.guild_whisper_sinks.get(ctx.guild_id, None)
-            if guild_voice_sink:
-                logger.debug(
-                    f"Sink is already active for guild {ctx.guild_id}.")
-                return
-
-            async def on_stop_record_callback(sink: WhisperSink, ctx):
-                logger.debug(
-                    f"{ctx.channel.guild.id} -> on_stop_record_callback")
-                self._close_and_clean_sink_for_guild(ctx.guild_id)
-
-            transcript_queue = asyncio.Queue()
-            t = self.loop.create_task(transcript_process(
-                self.rabbit_conn, transcript_queue, ctx.guild_id, self))
-            self.guild_whisper_message_tasks[ctx.guild_id] = t
-
-            whisper_sink = WhisperSink(
-                transcript_queue,
-                self.loop,
-                data_length=50000,
-                quiet_phrase_timeout=0.5,
-                mid_sentence_multiplier=1.2,
-                no_data_multiplier=0.55,
-                max_phrase_timeout=15,
-                min_phrase_length=5,
-                max_speakers=10
-            )
-
-            self.guild_to_helper[ctx.guild_id].vc.start_recording(
-                whisper_sink, on_stop_record_callback, ctx)
-
-            def on_thread_exception(e):
-                logger.warning(
-                    f"Whisper sink thread exception for guild {ctx.guild_id}. Restarting...\n{e}")
-                self._close_and_clean_sink_for_guild(ctx.guild_id)
-                self.start_recording(ctx)
-
-            whisper_sink.start_voice_thread(on_exception=on_thread_exception)
-
+            self.start_whisper_sink(ctx)
             self.guild_is_recording[ctx.guild_id] = True
-            self.guild_whisper_sinks[ctx.guild_id] = whisper_sink
         except Exception as e:
             logger.error(f"Error starting whisper sink: {e}")
+
+    def start_whisper_sink(self, ctx: discord.context.ApplicationContext):
+        guild_voice_sink = self.guild_whisper_sinks.get(ctx.guild_id, None)
+        if guild_voice_sink:
+            logger.debug(
+                f"Sink is already active for guild {ctx.guild_id}.")
+            return
+
+        async def on_stop_record_callback(sink: WhisperSink, ctx):
+            logger.debug(
+                f"{ctx.channel.guild.id} -> on_stop_record_callback")
+            self._close_and_clean_sink_for_guild(ctx.guild_id)
+
+        transcript_queue = asyncio.Queue()
+        t = self.loop.create_task(transcript_process(
+            self.rabbit_conn, transcript_queue, ctx.guild_id, self))
+        self.guild_whisper_message_tasks[ctx.guild_id] = t
+
+        whisper_sink = WhisperSink(
+            transcript_queue,
+            self.loop,
+            data_length=50000,
+            quiet_phrase_timeout=0.5,
+            mid_sentence_multiplier=1.2,
+            no_data_multiplier=0.55,
+            max_phrase_timeout=15,
+            min_phrase_length=5,
+            max_speakers=10
+        )
+
+        self.guild_to_helper[ctx.guild_id].vc.start_recording(
+            whisper_sink, on_stop_record_callback, ctx)
+
+        def on_thread_exception(e):
+            logger.warning(
+                f"Whisper sink thread exception for guild {ctx.guild_id}. Retry in 5 seconds...\n{e}")
+            self._close_and_clean_sink_for_guild(ctx.guild_id)
+
+            # retry in 5 seconds
+            self.loop.call_later(5, self.start_recording, ctx)
+
+        whisper_sink.start_voice_thread(on_exception=on_thread_exception)
+
+        self.guild_whisper_sinks[ctx.guild_id] = whisper_sink
 
     def stop_recording(self, ctx: discord.context.ApplicationContext):
         vc = ctx.guild.voice_client

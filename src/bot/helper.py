@@ -74,7 +74,7 @@ class BotHelper:
             self.current_music_source = None
 
     async def play_youtube(self, video_url):
-        if self.current_music_source:
+        if self.current_music_source and self.vc.is_playing():
             self.vc.stop()
 
         self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
@@ -194,19 +194,13 @@ class BotHelper:
         action = action.lower()
 
         if action == "start":
-            if self.vc.is_playing() or self.vc.is_paused():
-                self.vc.stop()
-
             await self.play_youtube(node["data"]["video_url"])
         elif action == "stop":
-            if self.vc.is_playing():
-                self.vc.stop()
+            self.stop_music()
         elif action == "pause":
-            if self.vc.is_playing():
-                self.vc.pause()
+            self.pause_music()
         elif action == "resume":
-            if self.vc.is_paused():
-                self.vc.resume()
+            self.resume_music()
         else:
             logger.error(f"Unknown music control action: {action}")
 
