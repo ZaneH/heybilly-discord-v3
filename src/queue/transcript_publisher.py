@@ -1,3 +1,4 @@
+import json
 import aio_pika
 import logging
 
@@ -17,9 +18,9 @@ class TranscriptPublisher:
         self.queue = await self.channel.declare_queue(self.queue_name)
         self.exchange = self.channel.default_exchange
 
-    async def publish_transcript(self, transcript: str):
-        logger.debug(f"Publishing transcript: {transcript}")
+    async def publish_data(self, data):
+        logger.debug(f"Publishing transcript: {data}")
         await self.exchange.publish(
-            aio_pika.Message(body=transcript.encode()),
+            aio_pika.Message(body=data.encode()),
             routing_key=self.queue_name
         )

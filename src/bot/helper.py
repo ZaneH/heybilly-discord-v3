@@ -5,6 +5,8 @@ import logging
 import discord
 from src.music.ytdl_source import YTDLSource
 from src.music.tts_queue import TTSQueue
+from src.utils.tts_voice_map import TTS_VOICE_MAP
+from supabase import Client
 
 BOT_NAME = "HeyBilly 💤"
 BOT_AWAKE_NAME = "HeyBilly 💬"
@@ -16,12 +18,16 @@ logger = logging.getLogger(__name__)
 class BotHelper:
     def __init__(self, bot):
         self.bot = bot
+        self.supabase: Client = self.bot.supabase
         self.guild_id = None
 
         self.tts_queue = None
         self.current_music_source = None
+        self.current_music_source_url = None
         self.current_sfx_source = None
         self.user_music_volume = 0.5
+
+        self.voice = None
 
         self.vc = None
 
@@ -74,6 +80,7 @@ class BotHelper:
         self.current_music_source = await YTDLSource.from_url(video_url, loop=self.bot.loop, stream=True)
         self.vc.play(self.current_music_source,
                      after=self.music_stopped_callback)
+        self.current_music_source_url = video_url
         self.vc.source.volume = self.user_music_volume
 
     async def play_sfx(self, sfx_url, sfx_duration=5):
@@ -137,8 +144,20 @@ class BotHelper:
     def stop_music(self) -> bool:
         if self.current_music_source and self.vc.is_playing():
             self.vc.stop()
+            self.current_music_source = None
+            self.current_music_source_url = None
             return True
         return False
+
+    def set_voice(self, new_voice_id: str):
+        self.voice = new_voice_id
+        res = self.supabase.table("guild_settings").update(
+            {"voice": new_voice_id}).eq("guild_id", self.guild_id).execute()
+        if hasattr(res, "error"):
+            logger.error(f"Error setting voice: {res.error}")
+        else:
+            logger.debug(
+                f"Voice in DB set to {new_voice_id} for guild {self.guild_id}.")
 
     async def _handle_post_node(self, node, discord_channel_id):
         await self.send_message(discord_channel_id, node["data"]["text"])

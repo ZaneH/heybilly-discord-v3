@@ -91,7 +91,7 @@ class WhisperSink(Sink):
         self.running = True
         self.speakers: List[Speaker] = []
         self.voice_queue = Queue()
-        self.executor = ThreadPoolExecutor(max_workers=4)  # TODO: Adjust this
+        self.executor = ThreadPoolExecutor(max_workers=8)  # TODO: Adjust this
 
     def start_voice_thread(self, on_exception=None):
         def thread_exception_hook(args):
@@ -189,7 +189,7 @@ Likely disconnected while listening.""")
                 # Transcribe audio for each speaker
                 future_to_speaker = {}
                 for speaker in self.speakers:
-                    if speaker.new_bytes > 0:
+                    if speaker.new_bytes > 1:
                         speaker.new_bytes = 0
 
                         future = self.executor.submit(self.transcribe, speaker)
@@ -241,6 +241,8 @@ Likely disconnected while listening.""")
     def update_speaker_status(self, speaker, transcription, current_time, speaker_new_bytes):
         # If the transcription is different from the last one, reset the word timeout
         if speaker.phrase != transcription:
+            logger.debug(
+                f"speaker.phrase != transcription: {speaker.phrase} :: {transcription}")
             speaker.empty_bytes_counter = 0
             speaker.word_timeout = self.quiet_phrase_timeout
             if re.search(r"\s*\.{2,}$", transcription) or not re.search(r"[.!?]$", transcription):

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from src.bot.helper import BotHelper
 from src.config.cliargs import CLIArgs
 from src.utils.commandline import CommandLine
+from src.utils.tts_voice_map import TTS_VOICE_MAP, get_voice_name
 
 load_dotenv()
 
@@ -41,7 +42,9 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
 
     from src.bot.heybilly_bot import HeyBillyBot
-    bot = HeyBillyBot(loop)
+    from src.database.supabase import supabase
+
+    bot = HeyBillyBot(supabase, loop)
 
     if not discord.opus.is_loaded():
         try:
@@ -135,7 +138,7 @@ if __name__ == "__main__":
             await ctx.respond("No music is playing.", ephemeral=True)
 
     @bot.slash_command(name="volume", description="Set the volume.")
-    async def volume(ctx: discord.context.ApplicationContext, value: int):
+    async def volume(ctx: discord.context.ApplicationContext, value: discord.Option(int)):
         helper = bot.guild_to_helper.get(ctx.guild_id, None)
         helper.set_volume(value)
         await ctx.respond(f"Volume set to {value}.", ephemeral=True)
@@ -174,6 +177,46 @@ if __name__ == "__main__":
                               fields=embed_fields)
 
         await ctx.respond(embed=embed, ephemeral=True)
+
+    @bot.slash_command(name="voice_get", description="Get the current voice used for TTS.")
+    async def voice_get(ctx: discord.context.ApplicationContext):
+        res = bot.supabase.from_('guild_settings').select(
+            'voice').eq('guild_id', ctx.guild_id).execute()
+
+        stored_voice = res.data[0].get('voice', None)
+        if stored_voice:
+            await ctx.respond(f"Current voice: {get_voice_name(stored_voice)}.", ephemeral=True)
+        else:
+            helper = bot.guild_to_helper.get(ctx.guild_id, None)
+            if helper:
+                await ctx.respond(f"Current voice: {helper.voice}.", ephemeral=True)
+            else:
+                await ctx.respond("HeyBilly must be in a voice channel first.", ephemeral=True)
+
+    @bot.slash_command(name="voice_set", description="Set the current voice used for TTS.")
+    @discord.default_permissions(manage_messages=True)
+    async def voice_set(ctx: discord.context.ApplicationContext, voice: discord.Option(str, choices=[
+        discord.OptionChoice(name=name, value=voice) for voice, name in TTS_VOICE_MAP.items()
+    ])):
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+
+        if helper:
+            helper.set_voice(voice)
+            await ctx.respond(f"Voice set to {get_voice_name(voice)}.", ephemeral=True)
+        else:
+            await ctx.respond("HeyBilly must be in a voice channel first.", ephemeral=True)
+
+    @bot.slash_command(name="playing", description="Show what's currently playing.")
+    async def playing(ctx: discord.context.ApplicationContext):
+        helper = bot.guild_to_helper.get(ctx.guild_id, None)
+        if helper:
+            music_source_url = helper.current_music_source_url
+            if music_source_url:
+                await ctx.respond(f"Currently playing: {music_source_url}", ephemeral=True)
+            else:
+                await ctx.respond("No music is playing.", ephemeral=True)
+        else:
+            await ctx.respond("HeyBilly is not in a voice channel.", ephemeral=True)
 
     try:
         loop.run_until_complete(bot.start(DISCORD_BOT_TOKEN))

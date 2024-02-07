@@ -3,6 +3,10 @@ git+https://github.com/Pycord-Development/pycord
 yt-dlp
 aio-pika
 python-dotenv
+stripe
+
+# Supabase
+supabase
 
 # Voice recognition
 faster-whisper>=0.10.0

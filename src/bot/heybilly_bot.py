@@ -4,13 +4,14 @@ import logging
 import os
 
 import discord
-from src.bot.helper import BotHelper
 
 from src.bot.sinks.whisper_sink import WhisperSink
 from src.queue.connect import RabbitConnection
 from src.queue.consumer_manager import ConsumerManager
-from src.queue.transcript.publisher import TranscriptPublisher
+from src.queue.transcript_publisher import TranscriptPublisher
 from src.utils.strings import find_wake_word_start
+from src.stripe.customer import StripeCustomer
+from src.database.guilds import DBGuilds
 
 DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
 
@@ -19,43 +20,9 @@ logger = logging.getLogger(__name__)
 WAKE_WORDS = ["ok billy", "yo billy", "okay billy", "hey billy"]
 
 
-async def whisper_message(rabbit_conn, transcript_queue: asyncio.Queue, guild_id: int, bot: discord.Bot):
-    transcript_publisher = TranscriptPublisher(rabbit_conn)
-    await transcript_publisher.setup_connection()
-
-    while True:
-        try:
-            response = await transcript_queue.get()
-
-            if response is None:
-                break  # Queue is closed
-            else:
-                user_id = response["user"]
-                text = response["result"]
-
-                wake_word_start = find_wake_word_start(WAKE_WORDS, text)
-                if wake_word_start == -1:
-                    logger.debug(f"No wake word found in: {text}")
-                    continue  # No wake word found
-
-                # Slice the line from the first wake word
-                # it isn't perfect, but it's good enough
-                processed_line = text[wake_word_start:]
-
-                username = bot.get_guild(
-                    guild_id).get_member(user_id).global_name
-                logger.info(f"User {username} said: {processed_line}")
-                await transcript_publisher.publish_transcript(json.dumps({
-                    "guild_id": guild_id,
-                    "username": username,
-                    "text": processed_line,
-                }))
-        except Exception as e:
-            logger.error(f"Error processing whisper message: {e}")
-
-
 class HeyBillyBot(discord.Bot):
-    def __init__(self, loop):
+    def __init__(self, supabase, loop):
+
         super().__init__(command_prefix="!", loop=loop,
                          activity=discord.CustomActivity(name='Listening for "Hey Billy"'))
         self.guild_to_helper = {}
@@ -63,6 +30,7 @@ class HeyBillyBot(discord.Bot):
         self.guild_is_recording = {}
         self.guild_whisper_sinks = {}
         self.guild_whisper_message_tasks = {}
+        self.supabase = supabase
         self._is_ready = False
 
         self.created_queues = {
@@ -117,17 +85,29 @@ class HeyBillyBot(discord.Bot):
         self.loop.create_task(self.process_actions())
         self._is_ready = True
 
-    async def send_welcome_message(self, guild: discord.Guild):
+    async def send_welcome_message(self, guild: discord.Guild, needs_signup=False):
         await guild.system_channel.send(embed=discord.Embed(
             title="HeyBilly",
-            description=f"Thanks for inviting me to {guild.name}! I can connect to your voice channel and listen for commands. Use `/help` to see what I can do.\n\nDue to server costs, I am limited to 10 requests per day per server without a subscription. If you would like to support me, please consider subscribing at [heybilly.xyz](https://www.heybilly.xyz).",
+            description=f"Thanks for inviting me to {guild.name}! I can connect to your voice channel and listen for commands. Use `/help` to see what I can do. Find the bot dashboard at [heybilly.xyz](https://www.heybilly.xyz).",
             color=discord.Color.blue()
         ))
+
+        if needs_signup:
+            await guild.system_channel.send(embed=discord.Embed(
+                title="HeyBilly",
+                description=f"It looks like you haven't registered with HeyBilly yet. Visit [heybilly.xyz/login](https://www.heybilly.xyz/login) to get started.",
+                color=discord.Color.yellow()
+            ))
 
     async def on_guild_join(self, guild: discord.Guild):
         try:
             logger.info(f"Joined guild {guild.name}.")
-            await self.send_welcome_message(guild)
+            successful = DBGuilds(self.supabase).create_guild_settings(
+                guild.owner_id, guild.id)
+            if successful:
+                await self.send_welcome_message(guild)
+            else:
+                await self.send_welcome_message(guild, needs_signup=True)
         except Exception as e:
             logger.error(f"Error welcoming guild: {e}")
 
@@ -156,8 +136,18 @@ class HeyBillyBot(discord.Bot):
         """
         Start recording audio from the voice channel. Create a whisper sink
         and start sending transcripts to the queue.
+
+        Since this is a critical function, this is where we should handle
+        subscription checks and limits.
         """
         try:
+            sc = StripeCustomer()
+            has_plan = sc.has_active_plan(ctx.guild_id)
+            if not has_plan:
+                logger.warning(
+                    f"No active plan for guild {ctx.guild_id}. Not starting whisper sink.")
+                return
+
             guild_voice_sink = self.guild_whisper_sinks.get(ctx.guild_id, None)
             if guild_voice_sink:
                 logger.debug(
@@ -170,7 +160,7 @@ class HeyBillyBot(discord.Bot):
                 self._close_and_clean_sink_for_guild(ctx.guild_id)
 
             transcript_queue = asyncio.Queue()
-            t = self.loop.create_task(whisper_message(
+            t = self.loop.create_task(transcript_process(
                 self.rabbit_conn, transcript_queue, ctx.guild_id, self))
             self.guild_whisper_message_tasks[ctx.guild_id] = t
 
@@ -180,9 +170,9 @@ class HeyBillyBot(discord.Bot):
                 data_length=50000,
                 quiet_phrase_timeout=0.5,
                 mid_sentence_multiplier=1.2,
-                no_data_multiplier=0.15,
+                no_data_multiplier=0.55,
                 max_phrase_timeout=15,
-                min_phrase_length=7,
+                min_phrase_length=5,
                 max_speakers=10
             )
 
@@ -229,3 +219,45 @@ class HeyBillyBot(discord.Bot):
             logger.error(f"Error stopping whisper sinks: {e}")
         finally:
             logger.info("Cleanup completed.")
+
+
+async def transcript_process(
+        rabbit_conn,
+        transcript_queue: asyncio.Queue,
+        guild_id: int,
+        bot: HeyBillyBot):
+    transcript_publisher = TranscriptPublisher(rabbit_conn)
+    await transcript_publisher.setup_connection()
+
+    while True:
+        try:
+            response = await transcript_queue.get()
+
+            if response is None:
+                break  # Queue is closed
+            else:
+                user_id = response["user"]
+                text = response["result"]
+
+                wake_word_start = find_wake_word_start(WAKE_WORDS, text)
+                if wake_word_start == -1:
+                    logger.debug(f"No wake word found in: {text}")
+                    continue  # No wake word found
+
+                # Slice the line from the first wake word
+                # it isn't perfect, but it's good enough
+                processed_line = text[wake_word_start:]
+
+                guild = bot.get_guild(guild_id)
+                username = guild.get_member(user_id).global_name
+                logger.info(f"User {username} said: {processed_line}")
+                voice = bot.guild_to_helper[guild_id].voice
+
+                await transcript_publisher.publish_data(json.dumps({
+                    "guild_id": guild_id,
+                    "username": username,
+                    "text": processed_line,
+                    "voice": voice
+                }))
+        except Exception as e:
+            logger.error(f"Error processing whisper message: {e}")
